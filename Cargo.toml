@@ -1,0 +1,20 @@
+[package]
+name = "app_dist_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.6.1"
+mongodb = "2.3.1"
+serde_json = "1.0.89"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0.148", features = ["derive"] }
+futures = "0.3.25"
+tower-http = { version = "0.3.4", features = ["trace", "set-header", "timeout", "limit"]}
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
+dotenv = "0.15.0"
+bson = { version = "2.4.0", features = ["uuid-0_8"] }
+uuid = { vresion = "1.2.2", feature = ["v4"] }
