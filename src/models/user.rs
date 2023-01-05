@@ -1,8 +1,8 @@
-use mongodb::bson::oid::ObjectId;
-use serde::{Deserialize, Serialize};
 use bson::serde_helpers::{
     deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id,
 };
+use mongodb::bson::oid::ObjectId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum UserRole {
@@ -22,7 +22,7 @@ pub struct User {
     pub id: String,
     pub name: String,
     pub email: String,
-    pub role: UserRole
+    pub role: UserRole,
 }
 
 #[derive(Deserialize)]
@@ -37,7 +37,7 @@ impl User {
             id: ObjectId::new().to_string(),
             name: new_user.name,
             email: new_user.email,
-            role: UserRole::USER
+            role: UserRole::USER,
         }
     }
 }

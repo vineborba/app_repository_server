@@ -1,6 +1,5 @@
 use bson::serde_helpers::{
     deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id,
-    uuid_as_binary::serialize,
 };
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -33,7 +32,7 @@ pub struct Project {
     pub image: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize)]
 pub struct CreateProject {
     pub name: String,
     pub description: String,
@@ -43,7 +42,7 @@ pub struct CreateProject {
 impl Project {
     pub fn new(new_project: CreateProject, owner_id: String) -> Project {
         let id = ObjectId::new().to_string();
-        let key = Project::create_project_key(&id);
+        let key = Project::create_project_key();
         Project {
             id,
             key,
@@ -55,7 +54,7 @@ impl Project {
         }
     }
 
-    fn create_project_key(project_id: &String) -> String {
+    fn create_project_key() -> String {
         Uuid::new_v4().to_string()
     }
 }

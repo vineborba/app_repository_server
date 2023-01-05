@@ -17,4 +17,6 @@ tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
 dotenv = "0.15.0"
 bson = { version = "2.4.0", features = ["uuid-0_8"] }
-uuid = { vresion = "1.2.2", feature = ["v4"] }
+uuid = { version = "1.2.2", features = ["v4"] }
+utoipa = { version = "2", features = ["axum_extras"] }
+thiserror = "1.0"

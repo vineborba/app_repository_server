@@ -4,42 +4,39 @@ use mongodb::{
     Client, Collection,
 };
 
-use crate::models::users::{CreateUser, User};
+use crate::{
+    error::AppError,
+    models::user::{CreateUser, User},
+};
 
 const DB_NAME: &str = "appdist";
 const COLLECTION_NAME: &str = "users";
 
-pub async fn get_users(State(client): State<Client>) -> impl IntoResponse {
+pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
 
     let options = FindOptions::default();
-    let mut cursor = coll
-        .find(None, options)
-        .await
-        .expect("failed to load users data");
+    let mut cursor = coll.find(None, options).await?;
 
     let mut rows: Vec<User> = Vec::new();
 
-    while cursor.advance().await.expect("can't advance cursor") {
-        rows.push(
-            cursor
-                .deserialize_current()
-                .expect("can't deserialize user"),
-        )
+    while cursor.advance().await? {
+        rows.push(cursor.deserialize_current()?)
     }
 
-    (StatusCode::OK, Json(rows)).into_response()
+    Ok((StatusCode::OK, Json(rows)).into_response())
 }
 
-pub async fn create_user(State(client): State<Client>, Json(payload): Json<CreateUser>) -> impl IntoResponse {
+pub(crate) async fn create_user(
+    State(client): State<Client>,
+    Json(payload): Json<CreateUser>,
+) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
 
     let new_user = User::new(payload);
 
     let options = InsertOneOptions::default();
-    coll.insert_one(&new_user, options)
-        .await
-        .expect("failed to insert user");
+    coll.insert_one(&new_user, options).await?;
 
-    (StatusCode::CREATED, Json(new_user)).into_response()
+    Ok((StatusCode::CREATED, Json(new_user)).into_response())
 }
