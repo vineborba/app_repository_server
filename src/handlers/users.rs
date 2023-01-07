@@ -12,6 +12,17 @@ use crate::{
 const DB_NAME: &str = "appdist";
 const COLLECTION_NAME: &str = "users";
 
+/// List all users
+///
+/// List all users in the database.
+#[utoipa::path(
+    get,
+    path = "/users",
+    tag = "Users",
+    responses(
+        (status = 200, description = "List users successfully", body = [User])
+    )
+)]
 pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
 
@@ -27,6 +38,19 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     Ok((StatusCode::OK, Json(rows)).into_response())
 }
 
+/// Create new user
+///
+/// Tries to create a new user item database or fails with 400 if it can't be done.
+#[utoipa::path(
+    post,
+    path = "/users",
+    tag = "Users",
+    request_body = CreateUser,
+    responses(
+        (status = 201, description = "User item created successfully", body = CreateUser),
+        (status = 400, description = "Bad Request")
+    )
+)]
 pub(crate) async fn create_user(
     State(client): State<Client>,
     Json(payload): Json<CreateUser>,

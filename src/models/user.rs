@@ -3,15 +3,16 @@ use bson::serde_helpers::{
 };
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub enum UserRole {
     USER,
     MANAGER,
     ADMIN,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
     #[serde(
@@ -25,7 +26,7 @@ pub struct User {
     pub role: UserRole,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateUser {
     pub email: String,
     pub name: String,

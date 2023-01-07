@@ -25,7 +25,7 @@ async fn main() -> Result<(), AppError> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db = database::connect().await.unwrap();
+    let db = database::connect().await?;
 
     let app = router(db).await;
 

@@ -3,15 +3,16 @@ use bson::serde_helpers::{
 };
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 pub enum Platforms {
     ANDROID,
     IOS,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     #[serde(
@@ -32,7 +33,7 @@ pub struct Project {
     pub image: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateProject {
     pub name: String,
     pub description: String,
