@@ -8,6 +8,7 @@ use crate::error::AppError;
 
 pub(super) mod projects;
 pub(super) mod users;
+pub(super) mod artifacts;
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response<BoxBody> {

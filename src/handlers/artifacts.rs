@@ -1,0 +1,107 @@
+use axum::{
+    extract::{Multipart, Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use mongodb::{
+    options::{FindOptions, InsertOneOptions},
+    Client, Collection,
+};
+
+use crate::{
+    error::AppError,
+    models::artifact::{Artifact, ArtifactExtensions, ArtifactToCreate, CreateArtifact},
+};
+
+const DB_NAME: &str = "appdist";
+const COLLECTION_NAME: &str = "artifacts";
+
+/// List all artifacts
+///
+/// List all artifacts in the database.
+#[utoipa::path(
+    get,
+    path = "/artifacts",
+    tag = "Artifacts",
+    responses(
+        (status = 200, description = "List artifacts successfully", body = [Artifact])
+    )
+)]
+pub(crate) async fn get_artifacts(
+    State(client): State<Client>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+
+    let options = FindOptions::default();
+    let mut cursor = coll.find(None, options).await?;
+
+    let mut rows: Vec<Artifact> = Vec::new();
+
+    while cursor.advance().await? {
+        rows.push(cursor.deserialize_current()?);
+    }
+
+    Ok((StatusCode::OK, Json(rows)).into_response())
+}
+
+/// Create new artifact
+///
+/// Tries to store a new artifact item in disk and save relevant data in database or fails with 400 if it can't be done.
+#[utoipa::path(
+    post,
+    tag = "Projects",
+    path = "/projects/{project_id}/artifacts",
+    request_body(content = CreateArtifactInput, description = "Artifact data", content_type = "multipart/form-data"),
+    params(
+        ("project_id" = String, Path, description = "id of the project that the artifact belongs to")
+    ),
+    responses(
+        (status = 201, description = "Artifact created and stored successfully", body = Artifact),
+        (status = 400, description = "Bad Request")
+    )
+)]
+pub(crate) async fn create_artifact(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+    mut payload: Multipart,
+) -> Result<impl IntoResponse, AppError> {
+    let mut artifact_to_create: CreateArtifact = Default::default();
+    while let Some(field) = payload.next_field().await.unwrap() {
+        match field.name() {
+            Some("branch") => artifact_to_create.branch = Some(field.name().unwrap().to_string()),
+            Some("identifier") => {
+                artifact_to_create.identifier = Some(field.name().unwrap().to_string())
+            }
+            Some("file") => {
+                let file_name = field.file_name().unwrap().to_string();
+                artifact_to_create.original_filename = Some(file_name);
+
+                let file_name = field.file_name().unwrap().to_string();
+                match file_name.get(file_name.len() - 3..) {
+                    Some("apk") => artifact_to_create.extension = Some(ArtifactExtensions::APK),
+                    Some("ipa") => artifact_to_create.extension = Some(ArtifactExtensions::IPA),
+                    _ => artifact_to_create.extension = Some(ArtifactExtensions::AAB),
+                }
+
+                artifact_to_create.mime_type = Some(field.content_type().unwrap().to_string());
+
+                artifact_to_create.size = Some(field.bytes().await.unwrap().len());
+            }
+            _ => (),
+        }
+    }
+    println!("{:?}", artifact_to_create);
+
+    let artifact_to_create = ArtifactToCreate::new(artifact_to_create, project_id);
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+    let new_artifact = Artifact::new(artifact_to_create);
+
+    let options = InsertOneOptions::default();
+    coll.insert_one(&new_artifact, options).await?;
+    Ok((StatusCode::CREATED, Json(new_artifact)).into_response())
+}

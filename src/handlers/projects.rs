@@ -63,7 +63,7 @@ pub(crate) async fn create_project(
         .database(DB_NAME)
         .collection::<Project>(COLLECTION_NAME);
 
-    let new_project = Project::new(payload, String::from("placeholder"));
+    let new_project = Project::new(payload, String::from("user id from request here"));
 
     let options = InsertOneOptions::default();
     coll.insert_one(&new_project, options).await?;
