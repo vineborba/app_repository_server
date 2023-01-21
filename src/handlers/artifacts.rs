@@ -5,6 +5,7 @@ use axum::{
     Json,
 };
 use mongodb::{
+    bson::doc,
     options::{FindOptions, InsertOneOptions},
     Client, Collection,
 };
@@ -25,7 +26,7 @@ const COLLECTION_NAME: &str = "artifacts";
     path = "/artifacts",
     tag = "Artifacts",
     responses(
-        (status = 200, description = "List artifacts successfully", body = [Artifact])
+        (status = 200, description = "Listed artifacts successfully", body = [Artifact])
     )
 )]
 pub(crate) async fn get_artifacts(
@@ -49,7 +50,7 @@ pub(crate) async fn get_artifacts(
 
 /// Create new artifact
 ///
-/// Tries to store a new artifact item in disk and save relevant data in database or fails with 400 if it can't be done.
+/// Tries to store a new artifact in disk and save relevant data in database or fails with 400 if it can't be done.
 #[utoipa::path(
     post,
     tag = "Projects",
@@ -71,10 +72,8 @@ pub(crate) async fn create_artifact(
     let mut artifact_to_create: CreateArtifact = Default::default();
     while let Some(field) = payload.next_field().await.unwrap() {
         match field.name() {
-            Some("branch") => artifact_to_create.branch = Some(field.name().unwrap().to_string()),
-            Some("identifier") => {
-                artifact_to_create.identifier = Some(field.name().unwrap().to_string())
-            }
+            Some("branch") => artifact_to_create.branch = Some(field.text().await?),
+            Some("identifier") => artifact_to_create.identifier = Some(field.text().await?),
             Some("file") => {
                 let file_name = field.file_name().unwrap().to_string();
                 artifact_to_create.original_filename = Some(file_name);
@@ -88,7 +87,7 @@ pub(crate) async fn create_artifact(
 
                 artifact_to_create.mime_type = Some(field.content_type().unwrap().to_string());
 
-                artifact_to_create.size = Some(field.bytes().await.unwrap().len());
+                artifact_to_create.size = Some(field.bytes().await?.len());
             }
             _ => (),
         }
@@ -104,4 +103,41 @@ pub(crate) async fn create_artifact(
     let options = InsertOneOptions::default();
     coll.insert_one(&new_artifact, options).await?;
     Ok((StatusCode::CREATED, Json(new_artifact)).into_response())
+}
+
+/// List artifacts by project
+///
+/// List all artifacts that belongs to a project.
+#[utoipa::path(
+    get,
+    tag = "Projects",
+    path = "/projects/{project_id}/artifacts",
+    request_body(content = CreateArtifactInput, description = "Artifact data", content_type = "multipart/form-data"),
+    params(
+        ("project_id" = String, Path, description = "id of the project that the artifact belongs to")
+    ),
+    responses(
+        (status = 201, description = "Artifact created and stored successfully", body = Artifact),
+        (status = 400, description = "Bad Request")
+    )
+)]
+pub(crate) async fn list_project_artifacts(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+
+    let filter = doc! { "projectId": project_id };
+    let options = FindOptions::builder().sort(doc! { "createdAt": 1 }).build();
+    let mut cursor = coll.find(filter, options).await?;
+
+    let mut rows: Vec<Artifact> = Vec::new();
+
+    while cursor.advance().await? {
+        rows.push(cursor.deserialize_current()?);
+    }
+
+    Ok((StatusCode::OK, Json(rows)).into_response())
 }

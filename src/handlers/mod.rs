@@ -13,7 +13,8 @@ pub(super) mod artifacts;
 impl IntoResponse for AppError {
     fn into_response(self) -> Response<BoxBody> {
         let (status, message) = match self {
-            AppError::MongoError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.kind),
+            AppError::MongoError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            AppError::MultipartError(e) => (StatusCode::BAD_REQUEST, e.to_string()),
         };
 
         Response::builder()

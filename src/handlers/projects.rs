@@ -20,7 +20,7 @@ const COLLECTION_NAME: &str = "projects";
     path = "/projects",
     tag = "Projects",
     responses(
-        (status = 200, description = "List projects successfully", body = [Project])
+        (status = 200, description = "Listed projects successfully", body = [Project])
     )
 )]
 pub(crate) async fn get_projects(
@@ -44,14 +44,14 @@ pub(crate) async fn get_projects(
 
 /// Create new project
 ///
-/// Tries to create a new project item database or fails with 400 if it can't be done.
+/// Tries to create a new project database or fails with 400 if it can't be done.
 #[utoipa::path(
     post,
     path = "/projects",
     request_body = CreateProject,
     tag = "Projects",
     responses(
-        (status = 201, description = "Project item created successfully", body = Project),
+        (status = 201, description = "Project created successfully", body = Project),
         (status = 400, description = "Bad Request")
     )
 )]
@@ -64,7 +64,6 @@ pub(crate) async fn create_project(
         .collection::<Project>(COLLECTION_NAME);
 
     let new_project = Project::new(payload, String::from("user id from request here"));
-
     let options = InsertOneOptions::default();
     coll.insert_one(&new_project, options).await?;
 

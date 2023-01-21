@@ -4,4 +4,6 @@ use thiserror::Error;
 pub(crate) enum AppError {
     #[error("Mongo failed to complete operation {}", .0)]
     MongoError(#[from] mongodb::error::Error),
+    #[error("Failed to decode form-data field")]
+    MultipartError(#[from] axum::extract::multipart::MultipartError)
 }

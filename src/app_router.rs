@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::{header, HeaderValue},
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use mongodb::Client;
@@ -14,7 +14,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::handlers::{
-    artifacts::{create_artifact, get_artifacts},
+    artifacts::{create_artifact, get_artifacts, list_project_artifacts},
     projects::{create_project, get_projects},
     users::{create_user, get_users},
 };
@@ -60,7 +60,9 @@ pub(super) async fn router(db: Client) -> Router {
                     "/:project_id",
                     Router::new().route(
                         "/artifacts",
-                        post(create_artifact).route_layer(DefaultBodyLimit::disable()),
+                        get(list_project_artifacts)
+                            .post(create_artifact)
+                            .route_layer(DefaultBodyLimit::disable()),
                     ),
                 ),
         )

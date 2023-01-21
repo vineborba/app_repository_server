@@ -20,7 +20,7 @@ const COLLECTION_NAME: &str = "users";
     path = "/users",
     tag = "Users",
     responses(
-        (status = 200, description = "List users successfully", body = [User])
+        (status = 200, description = "Listed users successfully", body = [User])
     )
 )]
 pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoResponse, AppError> {
@@ -47,7 +47,7 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     tag = "Users",
     request_body = CreateUser,
     responses(
-        (status = 201, description = "User item created successfully", body = CreateUser),
+        (status = 201, description = "User created successfully", body = CreateUser),
         (status = 400, description = "Bad Request")
     )
 )]

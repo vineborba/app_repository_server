@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 use app_dist_server::create_file_path;
 
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
+#[serde(rename_all = "lowercase")]
 pub enum ArtifactExtensions {
     IPA,
     APK,

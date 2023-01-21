@@ -1,4 +1,4 @@
-use std::fs;
+use std::{env, fs};
 
 pub fn create_file_path(
     project: &String,
@@ -6,10 +6,8 @@ pub fn create_file_path(
     identifier: &String,
     extension: &String,
 ) -> Result<String, std::io::Error> {
-    let full_path = format!(
-        "../artifacts/{}/{}/{}.{}",
-        project, branch, identifier, extension
-    );
+    let base_path = env::var("UPLOADS_PATH").expect("Failed to load UPLOADS_PATH");
+    let full_path = format!("{base_path}/{project}/{branch}/{identifier}.{extension}",);
     fs::create_dir_all(&full_path)?;
     Ok(full_path)
 }
