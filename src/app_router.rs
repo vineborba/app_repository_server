@@ -1,13 +1,19 @@
 use axum::{
     extract::DefaultBodyLimit,
-    http::{header, HeaderValue},
-    routing::get,
+    http::{
+        header::{self, CONTENT_TYPE},
+        HeaderValue, Method,
+    },
+    routing::{get, post},
     Router,
 };
 use mongodb::Client;
 use std::time::Duration;
 use tower_http::{
-    limit::RequestBodyLimitLayer, set_header::SetRequestHeaderLayer, timeout::TimeoutLayer,
+    cors::{Any, CorsLayer},
+    limit::RequestBodyLimitLayer,
+    set_header::SetRequestHeaderLayer,
+    timeout::TimeoutLayer,
     trace::TraceLayer,
 };
 use utoipa::OpenApi;
@@ -16,7 +22,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use crate::handlers::{
     artifacts::{create_artifact, get_artifacts, list_project_artifacts},
     projects::{create_project, get_projects},
-    users::{create_user, get_users},
+    users::{create_user, get_users, login_user},
 };
 
 #[derive(OpenApi)]
@@ -68,7 +74,15 @@ pub(super) async fn router(db: Client) -> Router {
         )
         .nest(
             "/users",
-            Router::new().route("/", get(get_users).post(create_user)),
+            Router::new()
+                .route("/", get(get_users).post(create_user))
+                .nest("/login", Router::new().route("/", post(login_user))),
+        )
+        .layer(
+            CorsLayer::new()
+                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_origin(Any)
+                .allow_headers([CONTENT_TYPE]),
         )
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(RequestBodyLimitLayer::new(body_limit_request))

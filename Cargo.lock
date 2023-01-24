@@ -43,9 +43,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bson",
+ "chrono",
+ "data-encoding",
  "dotenv",
  "futures",
+ "jsonwebtoken",
  "mongodb",
+ "ring",
  "serde",
  "serde_json",
  "thiserror",
@@ -757,6 +761,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49409df3e3bf0856b916e2ceaca09ee28e6871cf7d9ce97a692cacfdb2a25a47"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "8.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09f4f04699947111ec1733e71778d763555737579e44b85844cae8e1940a1828"
+dependencies = [
+ "base64",
+ "ring",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -9,6 +9,8 @@ use utoipa::ToSchema;
 
 use app_dist_server::create_file_path;
 
+use crate::error::AppError;
+
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtifactExtensions {
@@ -74,27 +76,38 @@ pub struct ArtifactToCreate {
 }
 
 impl ArtifactToCreate {
-    pub fn new(data: CreateArtifact, project_id: String) -> ArtifactToCreate {
-        let branch = data.branch.unwrap();
-        let identifier = data.identifier.unwrap();
-        let extension = data.extension.unwrap();
+    pub fn new(data: CreateArtifact, project_id: String) -> Result<ArtifactToCreate, AppError> {
+        let branch = data.branch.unwrap_or("develop".to_string());
+        let identifier = data.identifier.unwrap_or("unidentified".to_string());
+        let extension = data.extension.unwrap_or(ArtifactExtensions::APK);
         let path = create_file_path(
             &project_id,
             &branch,
             &identifier,
             &extension.to_string().to_lowercase(),
-        )
-        .unwrap();
-        ArtifactToCreate {
-            original_filename: data.original_filename.unwrap(),
-            mime_type: data.mime_type.unwrap(),
-            size: data.size.unwrap(),
+        )?;
+        let original_filename = match data.original_filename {
+            Some(v) => v,
+            None => return Err(AppError::Never)
+        };
+        let mime_type = match data.mime_type {
+            Some(v) => v,
+            None => return Err(AppError::Never)
+        };
+        let size = match data.size {
+            Some(v) => v,
+            None => return Err(AppError::Never)
+        };
+        Ok(ArtifactToCreate {
+            original_filename,
+            mime_type,
+            size,
             branch,
             extension,
             identifier,
             path,
             project_id,
-        }
+        })
     }
 }
 

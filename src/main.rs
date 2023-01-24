@@ -5,8 +5,8 @@ mod handlers;
 mod models;
 
 use axum;
-use std::env;
 use dotenv::dotenv;
+use std::env;
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -31,12 +31,14 @@ async fn main() -> Result<(), AppError> {
     let app = router(db).await;
 
     let port = env::var("PORT").unwrap_or("3001".to_string());
-    let port = port.parse::<u16>().expect("Couldn't parse PORT as an integer!");
+    let port = port
+        .parse::<u16>()
+        .expect("Couldn't parse PORT as an integer!");
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
-        .unwrap();
+        .expect("Couldn't initialize server!");
 
     Ok(())
 }

@@ -1,12 +1,13 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use bson::doc;
 use mongodb::{
-    options::{FindOptions, InsertOneOptions},
+    options::{FindOneOptions, FindOptions, InsertOneOptions},
     Client, Collection,
 };
 
 use crate::{
     error::AppError,
-    models::user::{CreateUser, User},
+    models::user::{CreateUser, LoginInput, LoginOutput, User},
 };
 
 const DB_NAME: &str = "appdist";
@@ -57,10 +58,44 @@ pub(crate) async fn create_user(
 ) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
 
-    let new_user = User::new(payload);
+    let new_user = User::new(payload)?;
 
     let options = InsertOneOptions::default();
     coll.insert_one(&new_user, options).await?;
 
     Ok((StatusCode::CREATED, Json(new_user)).into_response())
+}
+
+/// Log in
+///
+/// Log in user into the platform
+#[utoipa::path(
+    post,
+    path = "/users/login",
+    tag = "Users",
+    request_body = LoginInput,
+    responses(
+        (status = 201, description = "User logged in successfully", body = LoginOutput),
+        (status = 400, description = "Bad Request")
+    )
+)]
+pub(crate) async fn login_user(
+    State(client): State<Client>,
+    Json(payload): Json<LoginInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
+
+    let filter = doc! { "email": payload.email };
+    let options = FindOneOptions::default();
+    let user = coll.find_one(filter, options).await?;
+
+    let user = match user {
+        Some(u) => u,
+        None => return Err(AppError::InvalidCredentials),
+    };
+
+    user.validate_password(payload.password)?;
+    let response = LoginOutput::new(user.email, user.id)?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }

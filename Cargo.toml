@@ -12,7 +12,7 @@ serde_json = "1.0.89"
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0.148", features = ["derive"] }
 futures = "0.3.25"
-tower-http = { version = "0.3.4", features = ["trace", "set-header", "timeout", "limit"]}
+tower-http = { version = "0.3.4", features = ["trace", "set-header", "timeout", "limit", "cors"]}
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
 dotenv = "0.15.0"
@@ -21,3 +21,7 @@ uuid = { version = "1.2.2", features = ["v4"] }
 utoipa = { version = "2", features = ["axum_extras"] }
 utoipa-swagger-ui = { version = "3", features = ["axum"] }
 thiserror = "1.0"
+data-encoding = "2.3.3"
+ring = "0.16.20"
+jsonwebtoken = { version = "8", default-features = false }
+chrono = "0.4"

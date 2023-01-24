@@ -70,31 +70,35 @@ pub(crate) async fn create_artifact(
     mut payload: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
     let mut artifact_to_create: CreateArtifact = Default::default();
-    while let Some(field) = payload.next_field().await.unwrap() {
+    while let Some(field) = payload.next_field().await? {
         match field.name() {
             Some("branch") => artifact_to_create.branch = Some(field.text().await?),
             Some("identifier") => artifact_to_create.identifier = Some(field.text().await?),
             Some("file") => {
-                let file_name = field.file_name().unwrap().to_string();
-                artifact_to_create.original_filename = Some(file_name);
+                let file_name = match field.file_name() {
+                    Some(v) => v.to_string(),
+                    None => return Err(AppError::Never),
+                };
+                artifact_to_create.original_filename = Some(file_name.clone());
 
-                let file_name = field.file_name().unwrap().to_string();
                 match file_name.get(file_name.len() - 3..) {
                     Some("apk") => artifact_to_create.extension = Some(ArtifactExtensions::APK),
                     Some("ipa") => artifact_to_create.extension = Some(ArtifactExtensions::IPA),
                     _ => artifact_to_create.extension = Some(ArtifactExtensions::AAB),
                 }
 
-                artifact_to_create.mime_type = Some(field.content_type().unwrap().to_string());
+                match field.content_type() {
+                    Some(mime_type) => artifact_to_create.mime_type = Some(mime_type.to_string()),
+                    None => return Err(AppError::Never),
+                }
 
                 artifact_to_create.size = Some(field.bytes().await?.len());
             }
             _ => (),
         }
     }
-    println!("{:?}", artifact_to_create);
 
-    let artifact_to_create = ArtifactToCreate::new(artifact_to_create, project_id);
+    let artifact_to_create = ArtifactToCreate::new(artifact_to_create, project_id)?;
     let coll: Collection<Artifact> = client
         .database(DB_NAME)
         .collection::<Artifact>(COLLECTION_NAME);
