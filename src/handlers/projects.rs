@@ -1,12 +1,21 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
+use bson::{doc, oid::ObjectId};
 use mongodb::{
-    options::{FindOptions, InsertOneOptions},
+    options::{FindOneOptions, FindOptions, InsertOneOptions},
     Client, Collection,
 };
 
 use crate::{
     error::AppError,
-    models::project::{CreateProject, Project},
+    models::{
+        project::{CreateProject, Project},
+        user::Claims,
+    },
 };
 
 const DB_NAME: &str = "appdist";
@@ -42,6 +51,40 @@ pub(crate) async fn get_projects(
     Ok((StatusCode::OK, Json(rows)).into_response())
 }
 
+/// Get project data
+///
+/// Get a single project data.
+#[utoipa::path(
+    get,
+    path = "/projects/:project_id",
+    tag = "Projects",
+    params(
+        ("project_id" = String, Path, description = "id of the requested project data")
+    ),
+    responses(
+        (status = 200, description = "Found project successfully", body = Project),
+        (status = 404, description = "Project not found")
+    )
+)]
+pub(crate) async fn get_project(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Project> = client
+        .database(DB_NAME)
+        .collection::<Project>(COLLECTION_NAME);
+
+    let options = FindOneOptions::default();
+    let oid = ObjectId::parse_str(project_id)?;
+    let filter = doc! { "_id": oid };
+    let project = coll.find_one(filter, options).await?;
+
+    match project {
+        Some(p) => Ok((StatusCode::OK, Json(p)).into_response()),
+        None => Err(AppError::NotFound),
+    }
+}
+
 /// Create new project
 ///
 /// Tries to create a new project database or fails with 400 if it can't be done.
@@ -57,13 +100,13 @@ pub(crate) async fn get_projects(
 )]
 pub(crate) async fn create_project(
     State(client): State<Client>,
+    claims: Claims,
     Json(payload): Json<CreateProject>,
 ) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<Project> = client
         .database(DB_NAME)
         .collection::<Project>(COLLECTION_NAME);
-
-    let new_project = Project::new(payload, String::from("user id from request here"));
+    let new_project = Project::new(payload, claims.user_id);
     let options = InsertOneOptions::default();
     coll.insert_one(&new_project, options).await?;
 

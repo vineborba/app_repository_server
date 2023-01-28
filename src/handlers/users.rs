@@ -1,13 +1,14 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use bson::doc;
 use mongodb::{
+    bson::oid::ObjectId,
     options::{FindOneOptions, FindOptions, InsertOneOptions},
     Client, Collection,
 };
 
 use crate::{
     error::AppError,
-    models::user::{CreateUser, LoginInput, LoginOutput, User},
+    models::user::{AuthOutput, Claims, CreateUser, LoginInput, User, UserOutput},
 };
 
 const DB_NAME: &str = "appdist";
@@ -39,6 +40,35 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     Ok((StatusCode::OK, Json(rows)).into_response())
 }
 
+/// Get user information
+///
+/// Get user information using the token in request header.
+#[utoipa::path(
+    get,
+    path = "/users/me",
+    tag = "Users",
+    responses(
+        (status = 200, description = "Returned user successfully", body = UserOutput),
+        (status = 401, description = "Unauthorized")
+    )
+)]
+pub(crate) async fn get_user_data(
+    State(client): State<Client>,
+    claims: Claims,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
+
+    let options = FindOneOptions::default();
+    let oid = ObjectId::parse_str(claims.user_id)?;
+    let filter = doc! { "_id": oid };
+    let user = coll.find_one(filter, options).await?;
+
+    match user {
+        Some(u) => Ok((StatusCode::OK, Json(UserOutput::new(u))).into_response()),
+        None => Err(AppError::Unauthorized),
+    }
+}
+
 /// Create new user
 ///
 /// Tries to create a new user item database or fails with 400 if it can't be done.
@@ -48,7 +78,7 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     tag = "Users",
     request_body = CreateUser,
     responses(
-        (status = 201, description = "User created successfully", body = CreateUser),
+        (status = 201, description = "User created successfully", body = AuthOutput),
         (status = 400, description = "Bad Request")
     )
 )]
@@ -62,8 +92,8 @@ pub(crate) async fn create_user(
 
     let options = InsertOneOptions::default();
     coll.insert_one(&new_user, options).await?;
-
-    Ok((StatusCode::CREATED, Json(new_user)).into_response())
+    let response = AuthOutput::new(new_user.email, new_user.id)?;
+    Ok((StatusCode::CREATED, Json(response)).into_response())
 }
 
 /// Log in
@@ -75,7 +105,7 @@ pub(crate) async fn create_user(
     tag = "Users",
     request_body = LoginInput,
     responses(
-        (status = 201, description = "User logged in successfully", body = LoginOutput),
+        (status = 201, description = "User logged in successfully", body = AuthOutput),
         (status = 400, description = "Bad Request")
     )
 )]
@@ -95,7 +125,7 @@ pub(crate) async fn login_user(
     };
 
     user.validate_password(payload.password)?;
-    let response = LoginOutput::new(user.email, user.id)?;
+    let response = AuthOutput::new(user.email, user.id)?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
 }

@@ -6,10 +6,16 @@ pub enum AppError {
     MongoError(#[from] mongodb::error::Error),
     #[error("Failed to decode form-data field")]
     MultipartError(#[from] axum::extract::multipart::MultipartError),
+    #[error("Not found")]
+    NotFound,
     #[error("Invalid credentials")]
     InvalidCredentials,
+    #[error("Unauthorized")]
+    Unauthorized,
     #[error("IO Error")]
     IOError(#[from] std::io::Error),
+    #[error("Invalid ObjectId")]
+    ObjectIdParsingError(#[from] mongodb::bson::oid::Error),
     #[error("Unknown error")]
     Unspecified(#[from] ring::error::Unspecified),
     #[error("Unknown error")]

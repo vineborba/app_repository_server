@@ -82,9 +82,9 @@ pub(crate) async fn create_artifact(
                 artifact_to_create.original_filename = Some(file_name.clone());
 
                 match file_name.get(file_name.len() - 3..) {
-                    Some("apk") => artifact_to_create.extension = Some(ArtifactExtensions::APK),
-                    Some("ipa") => artifact_to_create.extension = Some(ArtifactExtensions::IPA),
-                    _ => artifact_to_create.extension = Some(ArtifactExtensions::AAB),
+                    Some("apk") => artifact_to_create.extension = Some(ArtifactExtensions::Apk),
+                    Some("ipa") => artifact_to_create.extension = Some(ArtifactExtensions::Ipa),
+                    _ => artifact_to_create.extension = Some(ArtifactExtensions::Aab),
                 }
 
                 match field.content_type() {

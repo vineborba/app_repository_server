@@ -4,7 +4,6 @@ mod error;
 mod handlers;
 mod models;
 
-use axum;
 use dotenv::dotenv;
 use std::env;
 use std::net::SocketAddr;
@@ -30,7 +29,7 @@ async fn main() -> Result<(), AppError> {
 
     let app = router(db).await;
 
-    let port = env::var("PORT").unwrap_or("3001".to_string());
+    let port = env::var("PORT").unwrap_or_else(|_| "3001".to_string());
     let port = port
         .parse::<u16>()
         .expect("Couldn't parse PORT as an integer!");

@@ -8,6 +8,7 @@ use mongodb::bson::oid::ObjectId;
 use ring::rand::SecureRandom;
 use ring::{digest, pbkdf2, rand};
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::num::NonZeroU32;
 use std::ops::Add;
 use utoipa::ToSchema;
@@ -29,33 +30,34 @@ pub struct LoginInput {
     pub password: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct Claims {
-    sub: String,
-    user_id: String,
-    iat: i64,
-    exp: i64,
+pub struct Claims {
+    pub sub: String,
+    pub user_id: String,
+    pub iat: i64,
+    pub exp: i64,
 }
 
 #[derive(Serialize, ToSchema)]
-pub struct LoginOutput {
+pub struct AuthOutput {
     token: String,
 }
 
-impl LoginOutput {
-    pub fn new(user_email: String, user_id: String) -> Result<LoginOutput, AppError> {
+impl AuthOutput {
+    pub fn new(user_email: String, user_id: String) -> Result<AuthOutput, AppError> {
         let iat = Utc::now();
-        let exp = iat.clone().add(Duration::days(40));
+        let exp = iat.add(Duration::days(40));
         let claims = Claims {
             user_id,
             sub: user_email,
             iat: iat.timestamp(),
             exp: exp.timestamp(),
         };
-        let key = EncodingKey::from_secret("secret".as_ref());
+        let secret = env::var("JWT_SECRET").expect("JWT_SECRET is not set!");
+        let key = EncodingKey::from_secret(secret.as_ref());
         match encode(&Header::default(), &claims, &key) {
-            Ok(token) => Ok(LoginOutput { token }),
+            Ok(token) => Ok(AuthOutput { token }),
             Err(e) => Err(AppError::Encode(e)),
         }
     }
@@ -63,9 +65,9 @@ impl LoginOutput {
 
 #[derive(Serialize, Deserialize, ToSchema)]
 pub enum UserRole {
-    USER,
-    MANAGER,
-    ADMIN,
+    User,
+    Manager,
+    Admin,
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
@@ -80,6 +82,7 @@ pub struct User {
     pub name: String,
     pub email: String,
     pub role: UserRole,
+    pub favorite_projects: Vec<String>,
     password: String,
     salt: String,
 }
@@ -91,7 +94,8 @@ impl User {
             id: ObjectId::new().to_string(),
             name: new_user.name,
             email: new_user.email,
-            role: UserRole::USER,
+            role: UserRole::User,
+            favorite_projects: vec![],
             password,
             salt,
         })
@@ -120,11 +124,11 @@ impl User {
     }
 
     pub fn validate_password(&self, password: String) -> Result<(), AppError> {
-        let salt = match HEXUPPER.decode(&self.salt.as_bytes()) {
+        let salt = match HEXUPPER.decode(self.salt.as_bytes()) {
             Ok(s) => s,
             Err(e) => return Err(AppError::Decode(e)),
         };
-        let decripted_password = match HEXUPPER.decode(&self.password.as_bytes()) {
+        let decripted_password = match HEXUPPER.decode(self.password.as_bytes()) {
             Ok(s) => s,
             Err(e) => return Err(AppError::Decode(e)),
         };
@@ -141,6 +145,22 @@ impl User {
         ) {
             Ok(_) => Ok(()),
             Err(_) => Err(AppError::InvalidCredentials),
+        }
+    }
+}
+
+#[derive(Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UserOutput {
+    name: String,
+    favorite_projects: Vec<String>,
+}
+
+impl UserOutput {
+    pub fn new(user: User) -> UserOutput {
+        UserOutput {
+            name: user.name,
+            favorite_projects: user.favorite_projects,
         }
     }
 }

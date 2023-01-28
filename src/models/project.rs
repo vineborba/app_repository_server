@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
+#[serde(rename_all = "lowercase")]
 pub enum Platforms {
-    ANDROID,
-    IOS,
+    Android,
+    Ios,
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]

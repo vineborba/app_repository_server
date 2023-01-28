@@ -1,7 +1,7 @@
 use axum::{
     extract::DefaultBodyLimit,
     http::{
-        header::{self, CONTENT_TYPE},
+        header::{self, AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, Method,
     },
     routing::{get, post},
@@ -21,8 +21,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::handlers::{
     artifacts::{create_artifact, get_artifacts, list_project_artifacts},
-    projects::{create_project, get_projects},
-    users::{create_user, get_users, login_user},
+    projects::{create_project, get_project, get_projects},
+    users::{create_user, get_user_data, get_users, login_user},
 };
 
 #[derive(OpenApi)]
@@ -64,7 +64,7 @@ pub(super) async fn router(db: Client) -> Router {
                 .route("/", get(get_projects).post(create_project))
                 .nest(
                     "/:project_id",
-                    Router::new().route(
+                    Router::new().route("/", get(get_project)).route(
                         "/artifacts",
                         get(list_project_artifacts)
                             .post(create_artifact)
@@ -76,13 +76,14 @@ pub(super) async fn router(db: Client) -> Router {
             "/users",
             Router::new()
                 .route("/", get(get_users).post(create_user))
-                .nest("/login", Router::new().route("/", post(login_user))),
+                .route("/login", post(login_user))
+                .route("/me", get(get_user_data)),
         )
         .layer(
             CorsLayer::new()
                 .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
                 .allow_origin(Any)
-                .allow_headers([CONTENT_TYPE]),
+                .allow_headers([CONTENT_TYPE, AUTHORIZATION]),
         )
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
         .layer(RequestBodyLimitLayer::new(body_limit_request))

@@ -14,9 +14,9 @@ use crate::error::AppError;
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtifactExtensions {
-    IPA,
-    APK,
-    AAB,
+    Ipa,
+    Apk,
+    Aab,
 }
 
 impl fmt::Display for ArtifactExtensions {
@@ -77,9 +77,11 @@ pub struct ArtifactToCreate {
 
 impl ArtifactToCreate {
     pub fn new(data: CreateArtifact, project_id: String) -> Result<ArtifactToCreate, AppError> {
-        let branch = data.branch.unwrap_or("develop".to_string());
-        let identifier = data.identifier.unwrap_or("unidentified".to_string());
-        let extension = data.extension.unwrap_or(ArtifactExtensions::APK);
+        let branch = data.branch.unwrap_or_else(|| "develop".to_string());
+        let identifier = data
+            .identifier
+            .unwrap_or_else(|| "unidentified".to_string());
+        let extension = data.extension.unwrap_or(ArtifactExtensions::Apk);
         let path = create_file_path(
             &project_id,
             &branch,
@@ -88,15 +90,15 @@ impl ArtifactToCreate {
         )?;
         let original_filename = match data.original_filename {
             Some(v) => v,
-            None => return Err(AppError::Never)
+            None => return Err(AppError::Never),
         };
         let mime_type = match data.mime_type {
             Some(v) => v,
-            None => return Err(AppError::Never)
+            None => return Err(AppError::Never),
         };
         let size = match data.size {
             Some(v) => v,
-            None => return Err(AppError::Never)
+            None => return Err(AppError::Never),
         };
         Ok(ArtifactToCreate {
             original_filename,
