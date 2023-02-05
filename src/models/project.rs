@@ -60,3 +60,10 @@ pub struct BaseProjectInput {
     pub description: String,
     pub platforms: Vec<Platforms>,
 }
+
+#[allow(dead_code)]
+#[derive(ToSchema, Debug)]
+pub struct EditImageInput {
+    #[schema(value_type = String, format = Binary)]
+    file: String,
+}

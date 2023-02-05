@@ -11,7 +11,6 @@ use mongodb::Client;
 use std::time::Duration;
 use tower_http::{
     cors::{Any, CorsLayer},
-    limit::RequestBodyLimitLayer,
     set_header::SetRequestHeaderLayer,
     timeout::TimeoutLayer,
     trace::TraceLayer,
@@ -21,7 +20,10 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::handlers::{
     artifacts::{create_artifact, get_artifacts, list_project_artifacts},
-    projects::{create_project, get_project, get_projects, update_project},
+    projects::{
+        create_project, get_project, get_projects, remove_project_image, update_project,
+        update_project_image,
+    },
     users::{create_user, edit_favorite_projects, get_user_data, get_users, login_user},
 };
 
@@ -30,18 +32,35 @@ use crate::handlers::{
         paths(
             crate::handlers::artifacts::get_artifacts,
             crate::handlers::artifacts::create_artifact,
+            crate::handlers::artifacts::list_project_artifacts,
             crate::handlers::projects::create_project,
             crate::handlers::projects::get_projects,
+            crate::handlers::projects::get_project,
             crate::handlers::projects::update_project,
+            crate::handlers::projects::update_project_image,
+            crate::handlers::projects::remove_project_image,
             crate::handlers::users::create_user,
             crate::handlers::users::get_users,
+            crate::handlers::users::get_user_data,
+            crate::handlers::users::login_user,
             crate::handlers::users::edit_favorite_projects,
         ),
         components(
             schemas(
-                crate::models::project::BaseProjectInput, crate::models::project::Project, crate::models::project::Platforms, crate::models::project::BaseProjectInput,
-                crate::models::user::CreateUserInput, crate::models::user::User, crate::models::user::UserRole, crate::models::user::AuthOutput, crate::models::user::LoginInput, crate::models::user::UserOutput, crate::models::user::UpdateFavoriteProjectsInput,
-                crate::models::artifact::Artifact,crate::models::artifact::ArtifactExtensions,crate::models::artifact::CreateArtifactInput,
+                crate::models::project::BaseProjectInput,
+                crate::models::project::Project,
+                crate::models::project::Platforms,
+                crate::models::project::EditImageInput,
+                crate::models::user::CreateUserInput,
+                crate::models::user::User,
+                crate::models::user::UserRole,
+                crate::models::user::AuthOutput,
+                crate::models::user::LoginInput,
+                crate::models::user::UserOutput,
+                crate::models::user::UpdateFavoriteProjectsInput,
+                crate::models::artifact::Artifact,
+                crate::models::artifact::ArtifactExtensions,
+                crate::models::artifact::CreateArtifactInput,
             )
         ),
         // modifiers(&SecurityAddon),
@@ -54,7 +73,10 @@ use crate::handlers::{
 struct ApiDoc;
 
 pub(super) async fn router(db: Client) -> Router {
-    let body_limit_request: usize = 10240 * 1000 * 1000;
+    let default_request_body_limit: usize = 2 * 1024 * 1024; // 2MB
+    let image_request_body_limit: usize = 5 * 1024 * 1024; // 5MB
+    let artifact_request_body_limit: usize = 300 * 1024 * 1024; // 300MB
+    dbg!(&image_request_body_limit);
     let server_header = HeaderValue::from_static("open-dist");
 
     let app = Router::new()
@@ -69,10 +91,16 @@ pub(super) async fn router(db: Client) -> Router {
                     Router::new()
                         .route("/", get(get_project).patch(update_project))
                         .route(
+                            "/image",
+                            patch(update_project_image)
+                                .route_layer(DefaultBodyLimit::max(image_request_body_limit))
+                                .delete(remove_project_image),
+                        )
+                        .route(
                             "/artifacts",
                             get(list_project_artifacts)
                                 .post(create_artifact)
-                                .route_layer(DefaultBodyLimit::disable()),
+                                .route_layer(DefaultBodyLimit::max(artifact_request_body_limit)),
                         ),
                 ),
         )
@@ -86,12 +114,18 @@ pub(super) async fn router(db: Client) -> Router {
         )
         .layer(
             CorsLayer::new()
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS, Method::PATCH])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::OPTIONS,
+                    Method::PATCH,
+                    Method::DELETE,
+                ])
                 .allow_origin(Any)
                 .allow_headers([CONTENT_TYPE, AUTHORIZATION]),
         )
         .layer(TimeoutLayer::new(Duration::from_secs(30)))
-        .layer(RequestBodyLimitLayer::new(body_limit_request))
+        .layer(DefaultBodyLimit::max(default_request_body_limit))
         .layer(TraceLayer::new_for_http())
         .layer(SetRequestHeaderLayer::if_not_present(
             header::SERVER,

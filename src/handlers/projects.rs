@@ -1,14 +1,21 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
     response::IntoResponse,
     Json,
 };
 use bson::{doc, oid::ObjectId};
+use image::{imageops::FilterType, io::Reader as ImageReader, ImageOutputFormat};
 use mongodb::{
-    options::{FindOneAndUpdateOptions, FindOneOptions, FindOptions, InsertOneOptions},
+    options::{
+        FindOneAndUpdateOptions, FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions,
+    },
+    results::UpdateResult,
     Client, Collection,
 };
+use std::io::Cursor;
+
+use app_dist_server::encode_base64;
 
 use crate::{
     error::AppError,
@@ -154,5 +161,101 @@ pub(crate) async fn update_project(
     match coll.find_one_and_update(filter, update, options).await? {
         Some(_) => Ok(StatusCode::NO_CONTENT.into_response()),
         None => Err(AppError::NotFound),
+    }
+}
+
+/// Update project image
+///
+/// Updates a project image, resizeing it to 160x160 and then saving it as a base64 encoded string.
+#[utoipa::path(
+    patch,
+    tag = "Projects",
+    path = "/projects/{project_id}/image",
+    request_body(content = EditImageInput, description = "Image", content_type = "multipart/form-data"),
+    params(
+        ("project_id" = String, Path, description = "id of the project that the image belongs to")
+    ),
+    responses(
+        (status = 204, description = "Image resized and stored successfully"),
+        (status = 400, description = "Bad Request"),
+        (status = 404, description = "Not Found")
+    )
+)]
+pub(crate) async fn update_project_image(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+    mut payload: Multipart,
+) -> Result<impl IntoResponse, AppError> {
+    let mut encoded_image = String::from("data:image/png;base64,");
+    while let Some(field) = payload.next_field().await? {
+        match field.name() {
+            Some("file") => match field.bytes().await {
+                Ok(file) => {
+                    let img = ImageReader::new(Cursor::new(file))
+                        .with_guessed_format()?
+                        .decode()?
+                        .resize_to_fill(160, 160, FilterType::Nearest);
+                    let mut img_buffer = vec![];
+                    img.write_to(&mut Cursor::new(&mut img_buffer), ImageOutputFormat::Png)?;
+                    encoded_image.push_str(encode_base64(img_buffer.as_slice())?.as_str());
+                }
+                Err(e) => return Err(AppError::MultipartError(e)),
+            },
+            _ => (),
+        };
+    }
+
+    let coll: Collection<Project> = client
+        .database(DB_NAME)
+        .collection::<Project>(COLLECTION_NAME);
+
+    let oid = ObjectId::parse_str(project_id)?;
+    let filter = doc! { "_id": oid };
+    let update = doc! { "$set": doc! { "image": encoded_image } };
+    let options = UpdateOptions::default();
+
+    match coll.update_one(filter, update, options).await {
+        Ok(UpdateResult {
+            modified_count: 1, ..
+        }) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Ok(_) => Err(AppError::NotFound),
+        Err(e) => Err(AppError::MongoError(e)),
+    }
+}
+
+/// Remove project image
+///
+/// Removes a project image.
+#[utoipa::path(
+    delete,
+    tag = "Projects",
+    path = "/projects/{project_id}/image",
+    params(
+        ("project_id" = String, Path, description = "id of the project that the image belongs to")
+    ),
+    responses(
+        (status = 204, description = "Image removed successfully"),
+        (status = 404, description = "Not Found")
+    )
+)]
+pub(crate) async fn remove_project_image(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Project> = client
+        .database(DB_NAME)
+        .collection::<Project>(COLLECTION_NAME);
+
+    let oid = ObjectId::parse_str(project_id)?;
+    let filter = doc! { "_id": oid };
+    let update = doc! { "$set": doc! { "image": "" } };
+    let options = UpdateOptions::default();
+
+    match coll.update_one(filter, update, options).await {
+        Ok(UpdateResult {
+            modified_count: 1, ..
+        }) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Ok(_) => Err(AppError::NotFound),
+        Err(e) => Err(AppError::MongoError(e)),
     }
 }

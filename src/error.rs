@@ -6,6 +6,8 @@ pub enum AppError {
     MongoError(#[from] mongodb::error::Error),
     #[error("Failed to decode form-data field")]
     MultipartError(#[from] axum::extract::multipart::MultipartError),
+    #[error("Image error")]
+    ImageError(#[from] image::ImageError),
     #[error("Not found")]
     NotFound,
     #[error("User already registered")]

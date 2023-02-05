@@ -1,4 +1,13 @@
-use std::{env, fs};
+use base64::{alphabet, engine, write};
+use std::{env, fs, io::Write};
+
+pub fn encode_base64(buffer: &[u8]) -> Result<String, std::io::Error> {
+    let engine =
+        engine::GeneralPurpose::new(&alphabet::STANDARD, engine::GeneralPurposeConfig::default());
+    let mut encoder = write::EncoderStringWriter::new(&engine);
+    encoder.write_all(buffer)?;
+    Ok(encoder.into_inner())
+}
 
 pub fn create_file_path(
     project: &String,

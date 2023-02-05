@@ -69,7 +69,7 @@ pub(crate) async fn create_artifact(
     Path(project_id): Path<String>,
     mut payload: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    let mut artifact_to_create: CreateArtifact = Default::default();
+    let mut artifact_to_create = CreateArtifact::default();
     while let Some(field) = payload.next_field().await? {
         match field.name() {
             Some("branch") => artifact_to_create.branch = Some(field.text().await?),

@@ -31,6 +31,10 @@ impl IntoResponse for AppError {
             AppError::ObjectIdParsingError(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
+            AppError::ImageError(_) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Couldn't parse image".to_string(),
+            ),
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Unkown error".to_string(),
