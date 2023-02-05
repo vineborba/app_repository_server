@@ -24,8 +24,13 @@ impl IntoResponse for AppError {
             AppError::InvalidCredentials => {
                 (StatusCode::BAD_REQUEST, "Invalid credentials".to_string())
             }
+            AppError::UserAlreadyRegistered => (
+                StatusCode::BAD_REQUEST,
+                "User already registered".to_string(),
+            ),
             AppError::ObjectIdParsingError(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Unkown error".to_string(),

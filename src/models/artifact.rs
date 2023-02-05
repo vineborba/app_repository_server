@@ -45,6 +45,23 @@ pub struct Artifact {
     qrcode: Option<String>,
 }
 
+impl Artifact {
+    pub fn new(data: ArtifactToCreate) -> Artifact {
+        Artifact {
+            id: ObjectId::new().to_string(),
+            branch: data.branch,
+            extension: data.extension,
+            identifier: data.identifier,
+            mime_type: data.mime_type,
+            original_filename: data.original_filename,
+            path: data.path,
+            project_id: data.project_id,
+            size: data.size,
+            qrcode: None,
+        }
+    }
+}
+
 #[derive(Deserialize, Default, Debug)]
 pub struct CreateArtifact {
     pub branch: Option<String>,
@@ -88,44 +105,21 @@ impl ArtifactToCreate {
             &identifier,
             &extension.to_string().to_lowercase(),
         )?;
-        let original_filename = match data.original_filename {
-            Some(v) => v,
-            None => return Err(AppError::Never),
-        };
-        let mime_type = match data.mime_type {
-            Some(v) => v,
-            None => return Err(AppError::Never),
-        };
-        let size = match data.size {
-            Some(v) => v,
-            None => return Err(AppError::Never),
-        };
-        Ok(ArtifactToCreate {
-            original_filename,
-            mime_type,
-            size,
-            branch,
-            extension,
-            identifier,
-            path,
-            project_id,
-        })
-    }
-}
-
-impl Artifact {
-    pub fn new(data: ArtifactToCreate) -> Artifact {
-        Artifact {
-            id: ObjectId::new().to_string(),
-            branch: data.branch,
-            extension: data.extension,
-            identifier: data.identifier,
-            mime_type: data.mime_type,
-            original_filename: data.original_filename,
-            path: data.path,
-            project_id: data.project_id,
-            size: data.size,
-            qrcode: None,
+        if let (Some(original_filename), Some(mime_type), Some(size)) =
+            (data.mime_type, data.original_filename, data.size)
+        {
+            Ok(ArtifactToCreate {
+                original_filename,
+                mime_type,
+                size,
+                branch,
+                extension,
+                identifier,
+                path,
+                project_id,
+            })
+        } else {
+            Err(AppError::Never)
         }
     }
 }

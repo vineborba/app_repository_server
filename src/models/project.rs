@@ -34,15 +34,8 @@ pub struct Project {
     pub image: Option<String>,
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct CreateProject {
-    pub name: String,
-    pub description: String,
-    pub platforms: Vec<Platforms>,
-}
-
 impl Project {
-    pub fn new(new_project: CreateProject, owner_id: String) -> Project {
+    pub fn new(new_project: BaseProjectInput, owner_id: String) -> Project {
         let id = ObjectId::new().to_string();
         let key = Project::create_project_key();
         Project {
@@ -59,4 +52,11 @@ impl Project {
     fn create_project_key() -> String {
         Uuid::new_v4().to_string()
     }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct BaseProjectInput {
+    pub name: String,
+    pub description: String,
+    pub platforms: Vec<Platforms>,
 }

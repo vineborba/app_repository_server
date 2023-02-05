@@ -6,14 +6,14 @@ use axum::{
 };
 use bson::{doc, oid::ObjectId};
 use mongodb::{
-    options::{FindOneOptions, FindOptions, InsertOneOptions},
+    options::{FindOneAndUpdateOptions, FindOneOptions, FindOptions, InsertOneOptions},
     Client, Collection,
 };
 
 use crate::{
     error::AppError,
     models::{
-        project::{CreateProject, Project},
+        project::{BaseProjectInput, Project},
         user::Claims,
     },
 };
@@ -77,10 +77,8 @@ pub(crate) async fn get_project(
     let options = FindOneOptions::default();
     let oid = ObjectId::parse_str(project_id)?;
     let filter = doc! { "_id": oid };
-    let project = coll.find_one(filter, options).await?;
-
-    match project {
-        Some(p) => Ok((StatusCode::OK, Json(p)).into_response()),
+    match coll.find_one(filter, options).await? {
+        Some(project) => Ok((StatusCode::OK, Json(project)).into_response()),
         None => Err(AppError::NotFound),
     }
 }
@@ -91,7 +89,7 @@ pub(crate) async fn get_project(
 #[utoipa::path(
     post,
     path = "/projects",
-    request_body = CreateProject,
+    request_body = BaseProjectInput,
     tag = "Projects",
     responses(
         (status = 201, description = "Project created successfully", body = Project),
@@ -101,7 +99,7 @@ pub(crate) async fn get_project(
 pub(crate) async fn create_project(
     State(client): State<Client>,
     claims: Claims,
-    Json(payload): Json<CreateProject>,
+    Json(payload): Json<BaseProjectInput>,
 ) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<Project> = client
         .database(DB_NAME)
@@ -111,4 +109,50 @@ pub(crate) async fn create_project(
     coll.insert_one(&new_project, options).await?;
 
     Ok((StatusCode::CREATED, Json(new_project)).into_response())
+}
+
+/// Update project
+///
+/// Tries to update a project in database. Fails with 400 if it can't be done or with 404 if not found.
+#[utoipa::path(
+    patch,
+    path = "/projects/:project_id",
+    request_body = BaseProjectInput,
+    tag = "Projects",
+    params(
+        ("project_id" = String, Path, description = "id of the requested project to be update")
+    ),
+    responses(
+        (status = 204, description = "Project updated successfully"),
+        (status = 400, description = "Bad Request"),
+        (status = 404, description = "Not Found")
+    )
+)]
+pub(crate) async fn update_project(
+    State(client): State<Client>,
+    Path(project_id): Path<String>,
+    Json(payload): Json<BaseProjectInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Project> = client
+        .database(DB_NAME)
+        .collection::<Project>(COLLECTION_NAME);
+
+    let oid = ObjectId::parse_str(project_id)?;
+    let filter = doc! { "_id": oid };
+
+    let updated_platforms = bson::to_bson(&payload.platforms).unwrap();
+    let update = doc! {
+        "$set": doc! {
+            "name": payload.name,
+            "description": payload.description,
+            "platforms": updated_platforms
+        }
+    };
+
+    let options = FindOneAndUpdateOptions::default();
+
+    match coll.find_one_and_update(filter, update, options).await? {
+        Some(_) => Ok(StatusCode::NO_CONTENT.into_response()),
+        None => Err(AppError::NotFound),
+    }
 }

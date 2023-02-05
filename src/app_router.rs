@@ -4,7 +4,7 @@ use axum::{
         header::{self, AUTHORIZATION, CONTENT_TYPE},
         HeaderValue, Method,
     },
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
 use mongodb::Client;
@@ -21,8 +21,8 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::handlers::{
     artifacts::{create_artifact, get_artifacts, list_project_artifacts},
-    projects::{create_project, get_project, get_projects},
-    users::{create_user, get_user_data, get_users, login_user},
+    projects::{create_project, get_project, get_projects, update_project},
+    users::{create_user, edit_favorite_projects, get_user_data, get_users, login_user},
 };
 
 #[derive(OpenApi)]
@@ -32,13 +32,15 @@ use crate::handlers::{
             crate::handlers::artifacts::create_artifact,
             crate::handlers::projects::create_project,
             crate::handlers::projects::get_projects,
+            crate::handlers::projects::update_project,
             crate::handlers::users::create_user,
             crate::handlers::users::get_users,
+            crate::handlers::users::edit_favorite_projects,
         ),
         components(
             schemas(
-                crate::models::project::CreateProject, crate::models::project::Project, crate::models::project::Platforms,
-                crate::models::user::CreateUser, crate::models::user::User, crate::models::user::UserRole,
+                crate::models::project::BaseProjectInput, crate::models::project::Project, crate::models::project::Platforms, crate::models::project::BaseProjectInput,
+                crate::models::user::CreateUserInput, crate::models::user::User, crate::models::user::UserRole, crate::models::user::AuthOutput, crate::models::user::LoginInput, crate::models::user::UserOutput, crate::models::user::UpdateFavoriteProjectsInput,
                 crate::models::artifact::Artifact,crate::models::artifact::ArtifactExtensions,crate::models::artifact::CreateArtifactInput,
             )
         ),
@@ -64,12 +66,14 @@ pub(super) async fn router(db: Client) -> Router {
                 .route("/", get(get_projects).post(create_project))
                 .nest(
                     "/:project_id",
-                    Router::new().route("/", get(get_project)).route(
-                        "/artifacts",
-                        get(list_project_artifacts)
-                            .post(create_artifact)
-                            .route_layer(DefaultBodyLimit::disable()),
-                    ),
+                    Router::new()
+                        .route("/", get(get_project).patch(update_project))
+                        .route(
+                            "/artifacts",
+                            get(list_project_artifacts)
+                                .post(create_artifact)
+                                .route_layer(DefaultBodyLimit::disable()),
+                        ),
                 ),
         )
         .nest(
@@ -77,11 +81,12 @@ pub(super) async fn router(db: Client) -> Router {
             Router::new()
                 .route("/", get(get_users).post(create_user))
                 .route("/login", post(login_user))
-                .route("/me", get(get_user_data)),
+                .route("/me", get(get_user_data))
+                .route("/favorite-projects", patch(edit_favorite_projects)),
         )
         .layer(
             CorsLayer::new()
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_methods([Method::GET, Method::POST, Method::OPTIONS, Method::PATCH])
                 .allow_origin(Any)
                 .allow_headers([CONTENT_TYPE, AUTHORIZATION]),
         )

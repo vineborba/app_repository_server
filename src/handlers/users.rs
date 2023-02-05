@@ -2,13 +2,17 @@ use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use bson::doc;
 use mongodb::{
     bson::oid::ObjectId,
-    options::{FindOneOptions, FindOptions, InsertOneOptions},
+    error::{ErrorKind, WriteError, WriteFailure},
+    options::{FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions},
     Client, Collection,
 };
 
 use crate::{
     error::AppError,
-    models::user::{AuthOutput, Claims, CreateUser, LoginInput, User, UserOutput},
+    models::user::{
+        AuthOutput, Claims, CreateUserInput, LoginInput, UpdateFavoriteProjectsInput, User,
+        UserOutput,
+    },
 };
 
 const DB_NAME: &str = "appdist";
@@ -61,10 +65,8 @@ pub(crate) async fn get_user_data(
     let options = FindOneOptions::default();
     let oid = ObjectId::parse_str(claims.user_id)?;
     let filter = doc! { "_id": oid };
-    let user = coll.find_one(filter, options).await?;
-
-    match user {
-        Some(u) => Ok((StatusCode::OK, Json(UserOutput::new(u))).into_response()),
+    match coll.find_one(filter, options).await? {
+        Some(user) => Ok((StatusCode::OK, Json(UserOutput::new(user))).into_response()),
         None => Err(AppError::Unauthorized),
     }
 }
@@ -76,7 +78,7 @@ pub(crate) async fn get_user_data(
     post,
     path = "/users",
     tag = "Users",
-    request_body = CreateUser,
+    request_body = CreateUserInput,
     responses(
         (status = 201, description = "User created successfully", body = AuthOutput),
         (status = 400, description = "Bad Request")
@@ -84,16 +86,25 @@ pub(crate) async fn get_user_data(
 )]
 pub(crate) async fn create_user(
     State(client): State<Client>,
-    Json(payload): Json<CreateUser>,
+    Json(payload): Json<CreateUserInput>,
 ) -> Result<impl IntoResponse, AppError> {
     let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
 
     let new_user = User::new(payload)?;
 
     let options = InsertOneOptions::default();
-    coll.insert_one(&new_user, options).await?;
-    let response = AuthOutput::new(new_user.email, new_user.id)?;
-    Ok((StatusCode::CREATED, Json(response)).into_response())
+    match coll.insert_one(&new_user, options).await {
+        Ok(_) => {
+            let response = AuthOutput::new(new_user.email, new_user.id)?;
+            Ok((StatusCode::CREATED, Json(response)).into_response())
+        }
+        Err(e) => match *e.kind.to_owned() {
+            ErrorKind::Write(WriteFailure::WriteError(WriteError { code: 11000, .. })) => {
+                Err(AppError::UserAlreadyRegistered)
+            }
+            _ => Err(AppError::MongoError(e)),
+        },
+    }
 }
 
 /// Log in
@@ -128,4 +139,59 @@ pub(crate) async fn login_user(
     let response = AuthOutput::new(user.email, user.id)?;
 
     Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+/// Edit favorite projects
+///
+/// Adds or removes a project from user's favorite projects list
+#[utoipa::path(
+    patch,
+    path = "/users/favorite-projects",
+    tag = "Users",
+    request_body = LoginInput,
+    responses(
+        (status = 204, description = "User logged in successfully"),
+        (status = 400, description = "Bad Request"),
+        (status = 403, description = "Forbidden")
+    )
+)]
+pub(crate) async fn edit_favorite_projects(
+    State(client): State<Client>,
+    claims: Claims,
+    Json(payload): Json<UpdateFavoriteProjectsInput>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
+
+    let options = FindOneOptions::default();
+
+    let oid = ObjectId::parse_str(claims.user_id)?;
+    let filter = doc! { "_id": oid };
+
+    let user = match coll.find_one(filter.clone(), options).await? {
+        Some(u) => u,
+        None => return Err(AppError::Forbidden),
+    };
+
+    let options = UpdateOptions::default();
+    let update;
+    if user
+        .favorite_projects
+        .iter()
+        .any(|id| id.eq(&payload.project_id))
+    {
+        update = doc! {
+            "$pull": doc! {
+                "favoriteProjects": payload.project_id
+            }
+        };
+    } else {
+        update = doc! {
+            "$addToSet": doc! {
+                "favoriteProjects": payload.project_id
+            }
+        };
+    }
+    coll.update_one(filter, update, options).await?;
+
+    Ok(StatusCode::NO_CONTENT.into_response())
 }

@@ -15,10 +15,8 @@ use utoipa::ToSchema;
 
 use crate::error::AppError;
 
-const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
-
 #[derive(Deserialize, ToSchema)]
-pub struct CreateUser {
+pub struct CreateUserInput {
     pub email: String,
     pub name: String,
     pub password: String,
@@ -88,7 +86,7 @@ pub struct User {
 }
 
 impl User {
-    pub fn new(new_user: CreateUser) -> Result<User, AppError> {
+    pub fn new(new_user: CreateUserInput) -> Result<User, AppError> {
         let (password, salt) = User::encrypt_password(new_user.password)?;
         Ok(User {
             id: ObjectId::new().to_string(),
@@ -108,6 +106,7 @@ impl User {
         };
         let rng = rand::SystemRandom::new();
 
+        const CREDENTIAL_LEN: usize = digest::SHA512_OUTPUT_LEN;
         let mut salt = [0u8; CREDENTIAL_LEN];
         rng.fill(&mut salt)?;
 
@@ -163,4 +162,10 @@ impl UserOutput {
             favorite_projects: user.favorite_projects,
         }
     }
+}
+
+#[derive(Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateFavoriteProjectsInput {
+    pub project_id: String,
 }

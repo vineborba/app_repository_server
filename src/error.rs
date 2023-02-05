@@ -8,10 +8,14 @@ pub enum AppError {
     MultipartError(#[from] axum::extract::multipart::MultipartError),
     #[error("Not found")]
     NotFound,
+    #[error("User already registered")]
+    UserAlreadyRegistered,
     #[error("Invalid credentials")]
     InvalidCredentials,
     #[error("Unauthorized")]
     Unauthorized,
+    #[error("Forbidden")]
+    Forbidden,
     #[error("IO Error")]
     IOError(#[from] std::io::Error),
     #[error("Invalid ObjectId")]
