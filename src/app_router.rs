@@ -76,7 +76,6 @@ pub(super) async fn router(db: Client) -> Router {
     let default_request_body_limit: usize = 2 * 1024 * 1024; // 2MB
     let image_request_body_limit: usize = 5 * 1024 * 1024; // 5MB
     let artifact_request_body_limit: usize = 300 * 1024 * 1024; // 300MB
-    dbg!(&image_request_body_limit);
     let server_header = HeaderValue::from_static("open-dist");
 
     let app = Router::new()

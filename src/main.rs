@@ -33,7 +33,7 @@ async fn main() -> Result<(), AppError> {
     let port = port
         .parse::<u16>()
         .expect("Couldn't parse PORT as an integer!");
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
