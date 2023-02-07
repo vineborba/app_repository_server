@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Create .env file
-        run: echo ${{ secrets.ENV_FILE }} > $GITHUB_WORKSPACE/.env
+        run: echo "${{ secrets.ENV_FILE }}" | base64 -d > $GITHUB_WORKSPACE/.env
 
       - name: Setup cargo version
         run: rustup toolchain install stable --profile minimal
