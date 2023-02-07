@@ -17,6 +17,13 @@ jobs:
       - name: Create .env file
         run: echo ${{ secrets.ENV_FILE }} > $GITHUB_WORKSPACE/.env
 
+      - name: Setup cargo version
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: "true"
+
       - name: Build
         run: cargo build --release
 
