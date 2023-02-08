@@ -19,8 +19,8 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"]}
 dotenv = "0.15.0"
 bson = { version = "2.4.0", features = ["uuid-0_8"] }
 uuid = { version = "1.2.2", features = ["v4"] }
-utoipa = { version = "2", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "3", features = ["axum"] }
+utoipa = { version = "3", features = ["axum_extras"] }
+utoipa-swagger-ui = { version = "3.0.2", features = ["axum"] }
 thiserror = "1.0"
 data-encoding = "2.3.3"
 ring = "0.16.20"

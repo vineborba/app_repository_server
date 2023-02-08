@@ -40,3 +40,12 @@ jobs:
         run: |
           rsync -avz $GITHUB_WORKSPACE/target/release/app_repository_server ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SERVER_DEPLOY_PATH }}/server
           rsync -avz $GITHUB_WORKSPACE/.env ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SERVER_DEPLOY_PATH }}/.env
+
+      - name: Restart server service after deploying
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: systemctl restart server.service

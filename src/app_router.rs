@@ -30,6 +30,10 @@ use crate::handlers::{
 
 #[derive(OpenApi)]
 #[openapi(
+        info(
+            title = "App Repository Server",
+            description = "App Repository Server OpenAPI definitions",
+        ),
         paths(
             crate::handlers::artifacts::get_artifacts,
             crate::handlers::artifacts::create_artifact,
