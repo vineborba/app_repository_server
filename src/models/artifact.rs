@@ -7,7 +7,7 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use app_dist_server::create_file_path;
+use app_repository_server::create_file_path;
 
 use crate::error::AppError;
 

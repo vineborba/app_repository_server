@@ -37,4 +37,6 @@ jobs:
         run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy with rsync
-        run: rsync -avz $GITHUB_WORKSPACE/target/release/app_dist_server ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SERVER_DEPLOY_PATH }}
+        run: |
+          rsync -avz $GITHUB_WORKSPACE/target/release/app_repository_server ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SERVER_DEPLOY_PATH }}/server
+          rsync -avz $GITHUB_WORKSPACE/.env ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.SERVER_DEPLOY_PATH }}/.env

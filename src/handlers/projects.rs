@@ -15,7 +15,7 @@ use mongodb::{
 };
 use std::io::Cursor;
 
-use app_dist_server::encode_base64;
+use app_repository_server::encode_base64;
 
 use crate::{
     error::AppError,
@@ -63,7 +63,7 @@ pub(crate) async fn get_projects(
 /// Get a single project data.
 #[utoipa::path(
     get,
-    path = "/projects/:project_id",
+    path = "/projects/{project_id}",
     tag = "Projects",
     params(
         ("project_id" = String, Path, description = "id of the requested project data")
@@ -101,7 +101,10 @@ pub(crate) async fn get_project(
     responses(
         (status = 201, description = "Project created successfully", body = Project),
         (status = 400, description = "Bad Request")
-    )
+    ),
+    security(
+        ("jwt_auth" = [])
+    ),
 )]
 pub(crate) async fn create_project(
     State(client): State<Client>,
@@ -123,7 +126,7 @@ pub(crate) async fn create_project(
 /// Tries to update a project in database. Fails with 400 if it can't be done or with 404 if not found.
 #[utoipa::path(
     patch,
-    path = "/projects/:project_id",
+    path = "/projects/{project_id}",
     request_body = BaseProjectInput,
     tag = "Projects",
     params(

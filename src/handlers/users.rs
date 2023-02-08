@@ -54,7 +54,10 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     responses(
         (status = 200, description = "Returned user successfully", body = UserOutput),
         (status = 401, description = "Unauthorized")
-    )
+    ),
+    security(
+        ("jwt_auth" = [])
+    ),
 )]
 pub(crate) async fn get_user_data(
     State(client): State<Client>,
@@ -153,7 +156,10 @@ pub(crate) async fn login_user(
         (status = 204, description = "User logged in successfully"),
         (status = 400, description = "Bad Request"),
         (status = 403, description = "Forbidden")
-    )
+    ),
+    security(
+        ("jwt_auth" = [])
+    ),
 )]
 pub(crate) async fn edit_favorite_projects(
     State(client): State<Client>,

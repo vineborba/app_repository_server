@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "app_dist_server"
+name = "app_repository_server"
 version = "0.1.0"
 dependencies = [
  "axum",

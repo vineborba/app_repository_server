@@ -57,8 +57,7 @@ async fn main() -> Result<(), AppError> {
         PathBuf::from(env::var("CERTS_PATH").expect("CERTS_PATH not set")).join("cert.pem"),
         PathBuf::from(env::var("CERTS_PATH").expect("CERTS_PATH not set")).join("key.pem"),
     )
-    .await
-    .unwrap();
+    .await?;
 
     let db = database::connect().await?;
 

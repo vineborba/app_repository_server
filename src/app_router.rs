@@ -25,6 +25,7 @@ use crate::handlers::{
         update_project_image,
     },
     users::{create_user, edit_favorite_projects, get_user_data, get_users, login_user},
+    SecurityAddon,
 };
 
 #[derive(OpenApi)]
@@ -63,7 +64,7 @@ use crate::handlers::{
                 crate::models::artifact::CreateArtifactInput,
             )
         ),
-        // modifiers(&SecurityAddon),
+        modifiers(&SecurityAddon),
         tags(
             (name = "Projects", description = "Projects management API"),
             (name = "Artifacts", description = "Artifacts management API"),

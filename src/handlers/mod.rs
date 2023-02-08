@@ -9,6 +9,10 @@ use axum::{
 };
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use std::env;
+use utoipa::{
+    openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
+    Modify,
+};
 
 use crate::{error::AppError, models::user::Claims};
 
@@ -67,5 +71,23 @@ where
             .map_err(|_| AppError::Unauthorized)?;
 
         Ok(token_data.claims)
+    }
+}
+
+pub(super) struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "jwt_auth",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .build(),
+                ),
+            )
+        }
     }
 }
