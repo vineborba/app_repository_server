@@ -9,3 +9,5 @@
 
 # Development system
 .DS_Store
+
+/certs
