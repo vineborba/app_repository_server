@@ -1,4 +1,5 @@
 use axum::{
+    body::Bytes,
     extract::{Multipart, Path, State},
     http::StatusCode,
     response::IntoResponse,
@@ -6,13 +7,20 @@ use axum::{
 };
 use mongodb::{
     bson::doc,
-    options::{FindOptions, InsertOneOptions},
+    options::{FindOptions, InsertOneOptions, UpdateOptions},
     Client, Collection,
 };
+use qrcode_generator::QrCodeEcc;
 
 use crate::{
     error::AppError,
-    models::artifact::{Artifact, ArtifactExtensions, ArtifactToCreate, CreateArtifact},
+    helpers::{
+        artifact::{create_file_url, create_itms_service_url, write_file_to_disk},
+        base64::encode_base64,
+    },
+    models::artifact::{
+        Artifact, ArtifactExtensions, ArtifactToCreate, CreateArtifact, IosMetadata,
+    },
 };
 
 const DB_NAME: &str = "appdist";
@@ -70,10 +78,14 @@ pub(crate) async fn create_artifact(
     mut payload: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
     let mut artifact_to_create = CreateArtifact::default();
+    let mut ios_metadata = IosMetadata::default();
+    let mut file_content: Option<Bytes> = None;
     while let Some(field) = payload.next_field().await? {
         match field.name() {
             Some("branch") => artifact_to_create.branch = Some(field.text().await?),
             Some("identifier") => artifact_to_create.identifier = Some(field.text().await?),
+            Some("bundle_identifier") => ios_metadata.bundle_identifier = field.text().await?,
+            Some("bundle_version") => ios_metadata.bundle_version = field.text().await?,
             Some("file") => {
                 let file_name = match field.file_name() {
                     Some(v) => v.to_string(),
@@ -92,10 +104,31 @@ pub(crate) async fn create_artifact(
                     None => return Err(AppError::Never),
                 }
 
-                artifact_to_create.size = Some(field.bytes().await?.len());
+                let bytes = field.bytes().await?;
+                artifact_to_create.size = Some(bytes.len());
+                file_content = Some(bytes);
             }
             _ => (),
         }
+    }
+
+    if let Some(e) = &artifact_to_create.extension {
+        match e {
+            ArtifactExtensions::Ipa
+                if ios_metadata.bundle_identifier.is_empty()
+                    || ios_metadata.bundle_version.is_empty() =>
+            {
+                return Err(AppError::InvalidIosMetadata);
+            }
+            ArtifactExtensions::Ipa => {
+                artifact_to_create.metadata = Some(ios_metadata);
+            }
+            _ => (),
+        }
+    }
+
+    if let None = file_content {
+        return Err(AppError::FileMissing);
     }
 
     let artifact_to_create = ArtifactToCreate::new(artifact_to_create, project_id)?;
@@ -105,8 +138,30 @@ pub(crate) async fn create_artifact(
     let new_artifact = Artifact::new(artifact_to_create);
 
     let options = InsertOneOptions::default();
-    coll.insert_one(&new_artifact, options).await?;
-    Ok((StatusCode::CREATED, Json(new_artifact)).into_response())
+    let insert_result = coll.insert_one(&new_artifact, options).await?;
+
+    if let Some(oid) = insert_result.inserted_id.as_object_id() {
+        let inserted_id = oid.to_string();
+        let url = match new_artifact.get_extension() {
+            ArtifactExtensions::Ipa => create_itms_service_url(inserted_id),
+            _ => create_file_url(inserted_id),
+        };
+        let qrcode = qrcode_generator::to_svg_to_string(url, QrCodeEcc::Low, 240, None::<&str>)?;
+        let mut encoded_code = String::from("data:image/svg;base64,");
+        encoded_code.push_str(encode_base64(qrcode.as_bytes())?.as_str());
+        let filter = doc! { "_id": oid };
+        let update = doc! { "$set": doc! { "qrcode": encoded_code } };
+        let options = UpdateOptions::default();
+        coll.update_one(filter, update, options).await?;
+        if let Some(file_content) = file_content {
+            let content_vec = file_content.to_vec();
+            write_file_to_disk(new_artifact.get_path(), content_vec.as_slice())?;
+        }
+
+        Ok((StatusCode::CREATED, Json(new_artifact)).into_response())
+    } else {
+        Err(AppError::FailedInsertion)
+    }
 }
 
 /// List artifacts by project

@@ -15,10 +15,9 @@ use mongodb::{
 };
 use std::io::Cursor;
 
-use app_repository_server::encode_base64;
-
 use crate::{
     error::AppError,
+    helpers::base64::encode_base64,
     models::{
         project::{BaseProjectInput, Project},
         user::Claims,

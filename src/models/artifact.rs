@@ -7,9 +7,7 @@ use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use app_repository_server::create_file_path;
-
-use crate::error::AppError;
+use crate::{error::AppError, helpers::artifact::create_file_path};
 
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -23,6 +21,13 @@ impl fmt::Display for ArtifactExtensions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(&self, f)
     }
+}
+
+#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct IosMetadata {
+    pub bundle_identifier: String,
+    pub bundle_version: String,
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
@@ -43,6 +48,7 @@ pub struct Artifact {
     size: usize,
     identifier: String,
     qrcode: Option<String>,
+    ios_metadata: Option<IosMetadata>,
 }
 
 impl Artifact {
@@ -57,12 +63,21 @@ impl Artifact {
             path: data.path,
             project_id: data.project_id,
             size: data.size,
+            ios_metadata: data.ios_metdata,
             qrcode: None,
         }
     }
+
+    pub fn get_extension(&self) -> &ArtifactExtensions {
+        &self.extension
+    }
+
+    pub fn get_path(&self) -> &String {
+        &self.path
+    }
 }
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize, Default)]
 pub struct CreateArtifact {
     pub branch: Option<String>,
     pub identifier: Option<String>,
@@ -70,13 +85,16 @@ pub struct CreateArtifact {
     pub original_filename: Option<String>,
     pub extension: Option<ArtifactExtensions>,
     pub size: Option<usize>,
+    pub metadata: Option<IosMetadata>,
 }
 
 #[allow(dead_code)]
-#[derive(ToSchema, Debug)]
+#[derive(ToSchema)]
 pub struct CreateArtifactInput {
     branch: Option<String>,
     identifier: Option<String>,
+    bundle_identifier: Option<String>,
+    bundle_version: Option<String>,
     #[schema(value_type = String, format = Binary)]
     file: String,
 }
@@ -90,6 +108,7 @@ pub struct ArtifactToCreate {
     project_id: String,
     branch: String,
     identifier: String,
+    ios_metdata: Option<IosMetadata>,
 }
 
 impl ArtifactToCreate {
@@ -106,7 +125,7 @@ impl ArtifactToCreate {
             &extension.to_string().to_lowercase(),
         )?;
         if let (Some(original_filename), Some(mime_type), Some(size)) =
-            (data.mime_type, data.original_filename, data.size)
+            (data.original_filename, data.mime_type, data.size)
         {
             Ok(ArtifactToCreate {
                 original_filename,
@@ -117,6 +136,7 @@ impl ArtifactToCreate {
                 identifier,
                 path,
                 project_id,
+                ios_metdata: data.metadata,
             })
         } else {
             Err(AppError::Never)

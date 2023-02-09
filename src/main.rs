@@ -2,6 +2,7 @@ mod app_router;
 mod database;
 mod error;
 mod handlers;
+mod helpers;
 mod models;
 
 use axum::{

@@ -66,6 +66,7 @@ use crate::handlers::{
                 crate::models::artifact::Artifact,
                 crate::models::artifact::ArtifactExtensions,
                 crate::models::artifact::CreateArtifactInput,
+                crate::models::artifact::IosMetadata,
             )
         ),
         modifiers(&SecurityAddon),

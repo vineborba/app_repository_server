@@ -8,6 +8,14 @@ pub enum AppError {
     MultipartError(#[from] axum::extract::multipart::MultipartError),
     #[error("Image error")]
     ImageError(#[from] image::ImageError),
+    #[error("QrCode error")]
+    QrCodeError(#[from] qrcode_generator::QRCodeError),
+    #[error("Invalid iOS metadata")]
+    InvalidIosMetadata,
+    #[error("Failed to insert data")]
+    FailedInsertion,
+    #[error("File missing")]
+    FileMissing,
     #[error("Not found")]
     NotFound,
     #[error("User already registered")]
