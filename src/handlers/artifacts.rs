@@ -1,16 +1,18 @@
 use axum::{
-    body::Bytes,
+    body::{boxed, Bytes, StreamBody},
     extract::{Multipart, Path, State},
-    http::StatusCode,
+    http::{Response, StatusCode},
     response::IntoResponse,
     Json,
 };
+use bson::oid::ObjectId;
 use mongodb::{
     bson::doc,
-    options::{FindOptions, InsertOneOptions, UpdateOptions},
+    options::{AggregateOptions, FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions},
     Client, Collection,
 };
 use qrcode_generator::QrCodeEcc;
+use tokio_util::io::ReaderStream;
 
 use crate::{
     error::AppError,
@@ -135,7 +137,7 @@ pub(crate) async fn create_artifact(
     let coll: Collection<Artifact> = client
         .database(DB_NAME)
         .collection::<Artifact>(COLLECTION_NAME);
-    let new_artifact = Artifact::new(artifact_to_create);
+    let new_artifact = Artifact::new(artifact_to_create)?;
 
     let options = InsertOneOptions::default();
     let insert_result = coll.insert_one(&new_artifact, options).await?;
@@ -147,7 +149,7 @@ pub(crate) async fn create_artifact(
             _ => create_file_url(inserted_id),
         };
         let qrcode = qrcode_generator::to_svg_to_string(url, QrCodeEcc::Low, 240, None::<&str>)?;
-        let mut encoded_code = String::from("data:image/svg;base64,");
+        let mut encoded_code = String::from("data:image/svg+xml;base64,");
         encoded_code.push_str(encode_base64(qrcode.as_bytes())?.as_str());
         let filter = doc! { "_id": oid };
         let update = doc! { "$set": doc! { "qrcode": encoded_code } };
@@ -171,13 +173,11 @@ pub(crate) async fn create_artifact(
     get,
     tag = "Projects",
     path = "/projects/{project_id}/artifacts",
-    request_body(content = CreateArtifactInput, description = "Artifact data", content_type = "multipart/form-data"),
     params(
         ("project_id" = String, Path, description = "id of the project that the artifact belongs to")
     ),
     responses(
-        (status = 201, description = "Artifact created and stored successfully", body = Artifact),
-        (status = 400, description = "Bad Request")
+        (status = 200, description = "Found artifacts", body = [Artifact]),
     )
 )]
 pub(crate) async fn list_project_artifacts(
@@ -188,15 +188,78 @@ pub(crate) async fn list_project_artifacts(
         .database(DB_NAME)
         .collection::<Artifact>(COLLECTION_NAME);
 
-    let filter = doc! { "projectId": project_id };
-    let options = FindOptions::builder().sort(doc! { "createdAt": 1 }).build();
-    let mut cursor = coll.find(filter, options).await?;
+    let pipeline = vec![
+        doc! {
+            "$match": doc! {
+              "projectId": project_id,
+            },
+        },
+        doc! {
+          "$project": doc! {
+            "_id": 1,
+            "type": 1,
+            "createdAt": 1,
+            "branch": 1,
+            "originalFilename": 1,
+            "identifier": 1,
+            "iosMetadata": 1,
+            "qrcode": 1,
+          },
+        },
+        doc! {
+          "$group": doc! {
+            "_id": "$branch",
+            "artifacts": {
+              "$push": "$$ROOT",
+            },
+          },
+        },
+    ];
+    let options = AggregateOptions::default();
+    let mut cursor = coll.aggregate(pipeline, options).await?;
 
-    let mut rows: Vec<Artifact> = Vec::new();
+    let mut rows = Vec::new();
 
     while cursor.advance().await? {
         rows.push(cursor.deserialize_current()?);
     }
 
     Ok((StatusCode::OK, Json(rows)).into_response())
+}
+
+/// Download artifact
+///
+/// Download artifact from server.
+#[utoipa::path(
+    get,
+    path = "/artifacts/{artifact_id}/download",
+    tag = "Artifacts",
+    responses(
+        (status = 200, description = "Downloaded successfully", body = ArtifactBinary, content_type = "application/octet-stream")
+    )
+)]
+pub(crate) async fn download_artifact(
+    State(client): State<Client>,
+    Path(artifact_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+
+    let options = FindOneOptions::default();
+    let oid = ObjectId::parse_str(artifact_id)?;
+    let filter = doc! { "_id": oid };
+    if let Some(artifact) = coll.find_one(filter, options).await? {
+        let path = artifact.get_path();
+        let file = tokio::fs::File::open(path).await?;
+        let stream = ReaderStream::new(file);
+        let body = StreamBody::new(stream);
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(boxed(body))?;
+
+        Ok(response.into_response())
+    } else {
+        Err(AppError::NotFound)
+    }
 }

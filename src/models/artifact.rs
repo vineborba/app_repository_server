@@ -1,7 +1,8 @@
 use core::fmt;
+use std::time::{SystemTime, SystemTimeError};
 
 use bson::serde_helpers::{
-    deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id,
+    deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id, serialize_u64_as_i64,
 };
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
@@ -47,13 +48,17 @@ pub struct Artifact {
     mime_type: String,
     size: usize,
     identifier: String,
+    #[serde(serialize_with = "serialize_u64_as_i64")]
+    created_at: u64,
     qrcode: Option<String>,
     ios_metadata: Option<IosMetadata>,
 }
 
 impl Artifact {
-    pub fn new(data: ArtifactToCreate) -> Artifact {
-        Artifact {
+    pub fn new(data: ArtifactToCreate) -> Result<Artifact, SystemTimeError> {
+        let duration = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+
+        Ok(Artifact {
             id: ObjectId::new().to_string(),
             branch: data.branch,
             extension: data.extension,
@@ -64,8 +69,9 @@ impl Artifact {
             project_id: data.project_id,
             size: data.size,
             ios_metadata: data.ios_metdata,
+            created_at: duration.as_secs() * 1000,
             qrcode: None,
-        }
+        })
     }
 
     pub fn get_extension(&self) -> &ArtifactExtensions {
@@ -143,3 +149,7 @@ impl ArtifactToCreate {
         }
     }
 }
+
+#[derive(ToSchema)]
+#[schema(value_type = String, format = Binary)]
+pub struct ArtifactBinary(String);

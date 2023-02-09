@@ -26,10 +26,14 @@ pub enum AppError {
     Unauthorized,
     #[error("Forbidden")]
     Forbidden,
+    #[error("System Time")]
+    SystemTimeError(#[from] std::time::SystemTimeError),
     #[error("IO Error")]
     IOError(#[from] std::io::Error),
     #[error("Invalid ObjectId")]
     ObjectIdParsingError(#[from] mongodb::bson::oid::Error),
+    #[error("Unknown error")]
+    AxumError(#[from] axum::http::Error),
     #[error("Unknown error")]
     Unspecified(#[from] ring::error::Unspecified),
     #[error("Unknown error")]
