@@ -19,7 +19,10 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use crate::handlers::{
-    artifacts::{create_artifact, download_artifact, get_artifacts, list_project_artifacts},
+    artifacts::{
+        create_artifact, download_artifact, get_artifacts, get_download_headers, get_ios_plist,
+        list_project_artifacts,
+    },
     projects::{
         create_project, get_project, get_projects, remove_project_image, update_project,
         update_project_image,
@@ -39,6 +42,8 @@ use crate::handlers::{
             crate::handlers::artifacts::create_artifact,
             crate::handlers::artifacts::list_project_artifacts,
             crate::handlers::artifacts::download_artifact,
+            crate::handlers::artifacts::get_download_headers,
+            crate::handlers::artifacts::get_ios_plist,
             crate::handlers::projects::create_project,
             crate::handlers::projects::get_projects,
             crate::handlers::projects::get_project,
@@ -92,7 +97,12 @@ pub(super) async fn router(db: Client) -> Router {
             "/artifacts",
             Router::new().route("/", get(get_artifacts)).nest(
                 "/:artifact_id",
-                Router::new().route("/download", get(download_artifact)),
+                Router::new()
+                    .route(
+                        "/download",
+                        get(download_artifact).head(get_download_headers),
+                    )
+                    .route("/ios-plist", get(get_ios_plist)),
             ),
         )
         .nest(

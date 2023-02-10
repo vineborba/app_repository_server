@@ -10,6 +10,8 @@ use utoipa::ToSchema;
 
 use crate::{error::AppError, helpers::artifact::create_file_path};
 
+use super::project::Project;
+
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtifactExtensions {
@@ -24,14 +26,14 @@ impl fmt::Display for ArtifactExtensions {
     }
 }
 
-#[derive(Serialize, Deserialize, Default, ToSchema)]
+#[derive(Serialize, Deserialize, Default, ToSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct IosMetadata {
     pub bundle_identifier: String,
     pub bundle_version: String,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {
     #[serde(
@@ -45,6 +47,7 @@ pub struct Artifact {
     extension: ArtifactExtensions,
     path: String,
     project_id: String,
+    project: Option<Project>,
     mime_type: String,
     size: usize,
     identifier: String,
@@ -71,6 +74,7 @@ impl Artifact {
             ios_metadata: data.ios_metdata,
             created_at: duration.as_secs() * 1000,
             qrcode: None,
+            project: None,
         })
     }
 
@@ -80,6 +84,23 @@ impl Artifact {
 
     pub fn get_path(&self) -> &String {
         &self.path
+    }
+
+    pub fn get_download_data(&self) -> (&String, &String, &usize) {
+        (&self.original_filename, &self.mime_type, &self.size)
+    }
+
+    pub fn get_plist_data(&self) -> Result<(String, String, String, String), AppError> {
+        if let (Some(ios_metadata), Some(project)) = (&self.ios_metadata, &self.project) {
+            Ok((
+                self.id.clone(),
+                ios_metadata.bundle_identifier.clone(),
+                ios_metadata.bundle_version.clone(),
+                project.name.clone(),
+            ))
+        } else {
+            Err(AppError::InvalidIosMetadata)
+        }
     }
 }
 

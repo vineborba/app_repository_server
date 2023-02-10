@@ -13,7 +13,7 @@ pub enum Platforms {
     Ios,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     #[serde(

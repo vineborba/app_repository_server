@@ -1,5 +1,5 @@
 use axum::{
-    body::{boxed, Bytes, StreamBody},
+    body::{self, boxed, Bytes, StreamBody},
     extract::{Multipart, Path, State},
     http::{Response, StatusCode},
     response::IntoResponse,
@@ -17,7 +17,9 @@ use tokio_util::io::ReaderStream;
 use crate::{
     error::AppError,
     helpers::{
-        artifact::{create_file_url, create_itms_service_url, write_file_to_disk},
+        artifact::{
+            create_file_url, create_itms_service_url, parse_plist_template, write_file_to_disk,
+        },
         base64::encode_base64,
     },
     models::artifact::{
@@ -234,6 +236,9 @@ pub(crate) async fn list_project_artifacts(
     get,
     path = "/artifacts/{artifact_id}/download",
     tag = "Artifacts",
+    params(
+        ("artifact_id" = String, Path, description = "id of the artifact")
+    ),
     responses(
         (status = 200, description = "Downloaded successfully", body = ArtifactBinary, content_type = "application/octet-stream")
     )
@@ -262,4 +267,115 @@ pub(crate) async fn download_artifact(
     } else {
         Err(AppError::NotFound)
     }
+}
+
+/// Fetch downlaod headers
+///
+/// Fetch download headers needed to download the artifact.
+#[utoipa::path(
+    head,
+    path = "/artifacts/{artifact_id}/download",
+    tag = "Artifacts",
+    params(
+        ("artifact_id" = String, Path, description = "id of the artifact")
+    ),
+    responses(
+        (status = 200, description = "Fetched download data successfully")
+    )
+)]
+pub(crate) async fn get_download_headers(
+    State(client): State<Client>,
+    Path(artifact_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+
+    let options = FindOneOptions::default();
+    let oid = ObjectId::parse_str(artifact_id)?;
+    let filter = doc! { "_id": oid };
+    if let Some(artifact) = coll.find_one(filter, options).await? {
+        let (original_filename, mime_type, size) = artifact.get_download_data();
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime_type)
+            .header("content-length", size.to_string())
+            .header(
+                "Content-Disposition",
+                format!("attachment; filename={original_filename}"),
+            )
+            .body(body::Empty::new())?;
+
+        Ok(response.into_response())
+    } else {
+        Err(AppError::NotFound)
+    }
+}
+
+/// Generate artifact iOS plist
+///
+/// Generate artifact iOS plist and returns it.
+#[utoipa::path(
+    get,
+    path = "/artifacts/{artifact_id}/ios-plist",
+    tag = "Artifacts",
+    params(
+        ("artifact_id" = String, Path, description = "id of the artifact")
+    ),
+    responses(
+        (status = 200, description = "Generated plist successfully", body = String)
+    )
+)]
+pub(crate) async fn get_ios_plist(
+    State(client): State<Client>,
+    Path(artifact_id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let coll: Collection<Artifact> = client
+        .database(DB_NAME)
+        .collection::<Artifact>(COLLECTION_NAME);
+
+    let options = AggregateOptions::default();
+    let oid = ObjectId::parse_str(artifact_id)?;
+    let pipeline = vec![
+        doc! {
+            "$match": doc! { "_id": oid }
+        },
+        doc! {
+            "$addFields": doc! {
+                "convertedProjectId": doc! { "$toObjectId": "$projectId" }
+            }
+        },
+        doc! {
+            "$lookup": doc! {
+                "from": "projects",
+                "localField": "convertedProjectId",
+                "foreignField": "_id",
+                "as": "project"
+            }
+        },
+        doc! {
+            "$unwind": "$project"
+        },
+        doc! {
+            "$limit": 1,
+        },
+    ];
+
+    let artifact = coll
+        .aggregate(pipeline, options)
+        .await?
+        .with_type::<Artifact>()
+        .deserialize_current()?;
+
+    let (artifact_id, bundle_identifier, bundle_version, app_name) = artifact.get_plist_data()?;
+
+    let plist = parse_plist_template(&artifact_id, &bundle_identifier, &bundle_version, &app_name);
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/xml")
+        .header("Content-Disposition", "attachment; filename=ios.plist")
+        .body(plist)?;
+
+    Ok(response.into_response())
 }
