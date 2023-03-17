@@ -22,6 +22,7 @@ use crate::{
         project::{BaseProjectInput, Project},
         user::Claims,
     },
+    schemas::project::{BaseProjectInput as BP, Project as P, ProjectRepository},
 };
 
 const DB_NAME: &str = "appdist";
@@ -87,6 +88,32 @@ pub(crate) async fn get_project(
         Some(project) => Ok((StatusCode::OK, Json(project)).into_response()),
         None => Err(AppError::NotFound),
     }
+}
+
+/// Create new project
+///
+/// Tries to create a new project database or fails with 400 if it can't be done.
+#[utoipa::path(
+    post,
+    path = "/projects-2",
+    request_body = BaseProjectInput,
+    tag = "Projects",
+    responses(
+        (status = 201, description = "Project created successfully", body = Project),
+        (status = 400, description = "Bad Request")
+    ),
+    security(
+        ("jwt_auth" = [])
+    ),
+)]
+pub(crate) async fn create_project_second(
+    State(repository): State<ProjectRepository>,
+    claims: Claims,
+    Json(payload): Json<BP>,
+) -> Result<impl IntoResponse, AppError> {
+    let new_project = P::new(payload, claims.user_id);
+    let new_project = repository.create(new_project).await?;
+    Ok((StatusCode::CREATED, Json(new_project)).into_response())
 }
 
 /// Create new project

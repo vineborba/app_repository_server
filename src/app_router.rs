@@ -18,17 +18,21 @@ use tower_http::{
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-use crate::handlers::{
-    artifacts::{
-        create_artifact, download_artifact, get_artifacts, get_download_headers, get_ios_plist,
-        list_project_artifacts,
+use crate::{
+    handlers::{
+        artifacts::{
+            create_artifact, download_artifact, get_artifacts, get_download_headers, get_ios_plist,
+            list_project_artifacts,
+        },
+        projects::{
+            create_project, create_project_second, get_project, get_projects, remove_project_image,
+            update_project, update_project_image,
+        },
+        users::{create_user, edit_favorite_projects, get_user_data, get_users, login_user},
+        SecurityAddon,
     },
-    projects::{
-        create_project, get_project, get_projects, remove_project_image, update_project,
-        update_project_image,
-    },
-    users::{create_user, edit_favorite_projects, get_user_data, get_users, login_user},
-    SecurityAddon,
+    schemas::project::ProjectRepository,
+    surrealdb_repo::DBClient,
 };
 
 #[derive(OpenApi)]
@@ -85,11 +89,17 @@ use crate::handlers::{
     )]
 struct ApiDoc;
 
-pub(super) async fn router(db: Client) -> Router {
+pub(super) async fn router(db: Client, sdb: DBClient) -> Router {
     let default_request_body_limit: usize = 2 * 1024 * 1024; // 2MB
     let image_request_body_limit: usize = 5 * 1024 * 1024; // 5MB
     let artifact_request_body_limit: usize = 300 * 1024 * 1024; // 300MB
     let server_header = HeaderValue::from_static("open-dist");
+
+    // let project_repository = ProjectRepository::new(sdb.clone());
+
+    // let test = Router::new()
+    //     .route("/projects-2", post(create_project_second))
+    //     .with_state(project_repository);
 
     let app = Router::new()
         .merge(SwaggerUi::new("/docs").url("/api-doc/openapi.json", ApiDoc::openapi()))
@@ -109,6 +119,7 @@ pub(super) async fn router(db: Client) -> Router {
             "/projects",
             Router::new()
                 .route("/", get(get_projects).post(create_project))
+                .route("-2", post(create_project))
                 .nest(
                     "/:project_id",
                     Router::new()

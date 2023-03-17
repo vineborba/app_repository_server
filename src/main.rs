@@ -4,6 +4,8 @@ mod error;
 mod handlers;
 mod helpers;
 mod models;
+mod schemas;
+mod surrealdb_repo;
 
 use axum::{
     extract::Host,
@@ -19,6 +21,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use app_router::router;
 use error::AppError;
+use surrealdb_repo::DBClient;
 
 #[derive(Clone, Copy)]
 struct Ports {
@@ -60,9 +63,10 @@ async fn main() -> Result<(), AppError> {
     )
     .await?;
 
+    let sdb = DBClient::connect().await?;
     let db = database::connect().await?;
 
-    let app = router(db).await;
+    let app = router(db, sdb).await;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], ports.https));
     axum_server::bind_rustls(addr, config)

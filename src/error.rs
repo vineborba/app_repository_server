@@ -2,6 +2,10 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
+    #[error("Surreal failed to complete operation {}", .0)]
+    SurrealError(#[from] surrealdb::Error),
+    #[error("Surreal failed to complete operation {}", .0)]
+    SurrealInternalError(#[from] surrealdb::err::Error),
     #[error("Mongo failed to complete operation {}", .0)]
     MongoError(#[from] mongodb::error::Error),
     #[error("Failed to decode form-data field")]
@@ -40,6 +44,8 @@ pub enum AppError {
     Decode(#[from] data_encoding::DecodeError),
     #[error("Unknown error")]
     Encode(#[from] jsonwebtoken::errors::Error),
+    #[error("Mismatched type value: '{0}'")]
+    TypeError(&'static str),
     #[error("Unknown error")]
     Never, // kinda like Typescript never type
 }
