@@ -14,7 +14,7 @@ use utoipa::{
     Modify,
 };
 
-use crate::{error::AppError, models::user::Claims};
+use crate::{error::AppError, schemas::user::Claims};
 
 pub(super) mod artifacts;
 pub(super) mod projects;
@@ -23,7 +23,6 @@ pub(super) mod users;
 impl IntoResponse for AppError {
     fn into_response(self) -> Response<BoxBody> {
         let (status, message) = match self {
-            AppError::MongoError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::MultipartError(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             AppError::InvalidCredentials => {
                 (StatusCode::BAD_REQUEST, "Invalid credentials".to_string())
@@ -36,7 +35,10 @@ impl IntoResponse for AppError {
                 (StatusCode::BAD_REQUEST, "Invalid iOS metadata".to_string())
             }
             AppError::FileMissing => (StatusCode::BAD_REQUEST, "File is missing".to_string()),
-            AppError::ObjectIdParsingError(e) => (StatusCode::BAD_REQUEST, e.to_string()),
+            AppError::SurrealError(e) => {
+                // dbg!(&e);
+                (StatusCode::BAD_REQUEST, e.to_string())
+            }
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
             AppError::ImageError(_) => (
@@ -47,6 +49,15 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Couldn't generate QrCode".to_string(),
             ),
+            AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
+            // AppError::SurrealInternalError(_) => todo!(),
+            // AppError::IOError(_) => todo!(),
+            // AppError::AxumError(_) => todo!(),
+            // AppError::Unspecified(_) => todo!(),
+            // AppError::Decode(_) => todo!(),
+            // AppError::Encode(_) => todo!(),
+            // AppError::TypeError(_) => todo!(),
+            // AppError::Never => todo!(),
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Unkown error".to_string(),

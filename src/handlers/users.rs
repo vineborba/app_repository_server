@@ -1,22 +1,13 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
-use bson::doc;
-use mongodb::{
-    bson::oid::ObjectId,
-    error::{ErrorKind, WriteError, WriteFailure},
-    options::{FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions},
-    Client, Collection,
-};
 
 use crate::{
     error::AppError,
-    models::user::{
+    repositories::user::UserRepository,
+    schemas::user::{
         AuthOutput, Claims, CreateUserInput, LoginInput, UpdateFavoriteProjectsInput, User,
         UserOutput,
     },
 };
-
-const DB_NAME: &str = "appdist";
-const COLLECTION_NAME: &str = "users";
 
 /// List all users
 ///
@@ -29,19 +20,12 @@ const COLLECTION_NAME: &str = "users";
         (status = 200, description = "Listed users successfully", body = [User])
     )
 )]
-pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
+pub(crate) async fn get_users(
+    State(repository): State<UserRepository>,
+) -> Result<impl IntoResponse, AppError> {
+    let users = repository.get_all().await?;
 
-    let options = FindOptions::default();
-    let mut cursor = coll.find(None, options).await?;
-
-    let mut rows: Vec<User> = Vec::new();
-
-    while cursor.advance().await? {
-        rows.push(cursor.deserialize_current()?)
-    }
-
-    Ok((StatusCode::OK, Json(rows)).into_response())
+    Ok((StatusCode::OK, Json(users)))
 }
 
 /// Get user information
@@ -60,17 +44,13 @@ pub(crate) async fn get_users(State(client): State<Client>) -> Result<impl IntoR
     ),
 )]
 pub(crate) async fn get_user_data(
-    State(client): State<Client>,
+    State(repository): State<UserRepository>,
     claims: Claims,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
-
-    let options = FindOneOptions::default();
-    let oid = ObjectId::parse_str(claims.user_id)?;
-    let filter = doc! { "_id": oid };
-    match coll.find_one(filter, options).await? {
-        Some(user) => Ok((StatusCode::OK, Json(UserOutput::new(user))).into_response()),
-        None => Err(AppError::Unauthorized),
+    if let Some(user) = repository.get(claims.user_id.as_str()).await? {
+        Ok((StatusCode::OK, Json(UserOutput::new(user))))
+    } else {
+        Err(AppError::Forbidden)
     }
 }
 
@@ -88,26 +68,13 @@ pub(crate) async fn get_user_data(
     )
 )]
 pub(crate) async fn create_user(
-    State(client): State<Client>,
+    State(repository): State<UserRepository>,
     Json(payload): Json<CreateUserInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
-
     let new_user = User::new(payload)?;
-
-    let options = InsertOneOptions::default();
-    match coll.insert_one(&new_user, options).await {
-        Ok(_) => {
-            let response = AuthOutput::new(new_user.email, new_user.id)?;
-            Ok((StatusCode::CREATED, Json(response)).into_response())
-        }
-        Err(e) => match *e.kind.to_owned() {
-            ErrorKind::Write(WriteFailure::WriteError(WriteError { code: 11000, .. })) => {
-                Err(AppError::UserAlreadyRegistered)
-            }
-            _ => Err(AppError::MongoError(e)),
-        },
-    }
+    let new_user = repository.create(new_user).await?;
+    let response = AuthOutput::new(new_user.email, new_user.id)?;
+    Ok((StatusCode::CREATED, Json(response)))
 }
 
 /// Log in
@@ -124,16 +91,10 @@ pub(crate) async fn create_user(
     )
 )]
 pub(crate) async fn login_user(
-    State(client): State<Client>,
+    State(repository): State<UserRepository>,
     Json(payload): Json<LoginInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
-
-    let filter = doc! { "email": payload.email };
-    let options = FindOneOptions::default();
-    let user = coll.find_one(filter, options).await?;
-
-    let user = match user {
+    let user = match repository.get_by_email(payload.email).await? {
         Some(u) => u,
         None => return Err(AppError::InvalidCredentials),
     };
@@ -141,7 +102,7 @@ pub(crate) async fn login_user(
     user.validate_password(payload.password)?;
     let response = AuthOutput::new(user.email, user.id)?;
 
-    Ok((StatusCode::OK, Json(response)).into_response())
+    Ok((StatusCode::OK, Json(response)))
 }
 
 /// Edit favorite projects
@@ -151,7 +112,7 @@ pub(crate) async fn login_user(
     patch,
     path = "/users/favorite-projects",
     tag = "Users",
-    request_body = LoginInput,
+    request_body = UpdateFavoriteProjectsInput,
     responses(
         (status = 204, description = "User logged in successfully"),
         (status = 400, description = "Bad Request"),
@@ -162,42 +123,28 @@ pub(crate) async fn login_user(
     ),
 )]
 pub(crate) async fn edit_favorite_projects(
-    State(client): State<Client>,
+    State(repository): State<UserRepository>,
     claims: Claims,
     Json(payload): Json<UpdateFavoriteProjectsInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<User> = client.database(DB_NAME).collection::<User>(COLLECTION_NAME);
-
-    let options = FindOneOptions::default();
-
-    let oid = ObjectId::parse_str(claims.user_id)?;
-    let filter = doc! { "_id": oid };
-
-    let user = match coll.find_one(filter.clone(), options).await? {
+    let user = match repository.get(&claims.user_id).await? {
         Some(u) => u,
         None => return Err(AppError::Forbidden),
     };
 
-    let options = UpdateOptions::default();
-    let update;
     if user
         .favorite_projects
         .iter()
-        .any(|id| id.eq(&payload.project_id))
+        .any(|id| id.eq(payload.project_id.as_str()))
     {
-        update = doc! {
-            "$pull": doc! {
-                "favoriteProjects": payload.project_id
-            }
-        };
+        repository
+            .remove_favorite_project(claims.user_id, payload.project_id)
+            .await?;
     } else {
-        update = doc! {
-            "$addToSet": doc! {
-                "favoriteProjects": payload.project_id
-            }
-        };
+        repository
+            .insert_favorite_project(claims.user_id, payload.project_id)
+            .await?;
     }
-    coll.update_one(filter, update, options).await?;
 
-    Ok(StatusCode::NO_CONTENT.into_response())
+    Ok(StatusCode::NO_CONTENT)
 }

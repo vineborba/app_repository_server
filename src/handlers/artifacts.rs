@@ -5,12 +5,6 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use bson::oid::ObjectId;
-use mongodb::{
-    bson::doc,
-    options::{AggregateOptions, FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions},
-    Client, Collection,
-};
 use qrcode_generator::QrCodeEcc;
 use tokio_util::io::ReaderStream;
 
@@ -22,13 +16,11 @@ use crate::{
         },
         base64::encode_base64,
     },
-    models::artifact::{
+    repositories::artifact::ArtifactRepository,
+    schemas::artifact::{
         Artifact, ArtifactExtensions, ArtifactToCreate, CreateArtifact, IosMetadata,
     },
 };
-
-const DB_NAME: &str = "appdist";
-const COLLECTION_NAME: &str = "artifacts";
 
 /// List all artifacts
 ///
@@ -42,22 +34,10 @@ const COLLECTION_NAME: &str = "artifacts";
     )
 )]
 pub(crate) async fn get_artifacts(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
-
-    let options = FindOptions::default();
-    let mut cursor = coll.find(None, options).await?;
-
-    let mut rows: Vec<Artifact> = Vec::new();
-
-    while cursor.advance().await? {
-        rows.push(cursor.deserialize_current()?);
-    }
-
-    Ok((StatusCode::OK, Json(rows)).into_response())
+    let artifacts = repository.get_all().await?;
+    Ok((StatusCode::OK, Json(artifacts)))
 }
 
 /// Create new artifact
@@ -77,7 +57,7 @@ pub(crate) async fn get_artifacts(
     )
 )]
 pub(crate) async fn create_artifact(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
     Path(project_id): Path<String>,
     mut payload: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
@@ -131,41 +111,32 @@ pub(crate) async fn create_artifact(
         }
     }
 
-    if let None = file_content {
+    if file_content.is_none() {
         return Err(AppError::FileMissing);
     }
-
-    let artifact_to_create = ArtifactToCreate::new(artifact_to_create, project_id)?;
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
+    dbg!(1);
+    let artifact_to_create = ArtifactToCreate::new(artifact_to_create, &project_id)?;
     let new_artifact = Artifact::new(artifact_to_create)?;
+    let new_artifact = repository.create(new_artifact, project_id).await?;
+    dbg!(2);
 
-    let options = InsertOneOptions::default();
-    let insert_result = coll.insert_one(&new_artifact, options).await?;
-
-    if let Some(oid) = insert_result.inserted_id.as_object_id() {
-        let inserted_id = oid.to_string();
-        let url = match new_artifact.get_extension() {
-            ArtifactExtensions::Ipa => create_itms_service_url(inserted_id),
-            _ => create_file_url(inserted_id),
-        };
-        let qrcode = qrcode_generator::to_svg_to_string(url, QrCodeEcc::Low, 240, None::<&str>)?;
-        let mut encoded_code = String::from("data:image/svg+xml;base64,");
-        encoded_code.push_str(encode_base64(qrcode.as_bytes())?.as_str());
-        let filter = doc! { "_id": oid };
-        let update = doc! { "$set": doc! { "qrcode": encoded_code } };
-        let options = UpdateOptions::default();
-        coll.update_one(filter, update, options).await?;
-        if let Some(file_content) = file_content {
-            let content_vec = file_content.to_vec();
-            write_file_to_disk(new_artifact.get_path(), content_vec.as_slice())?;
-        }
-
-        Ok((StatusCode::CREATED, Json(new_artifact)).into_response())
-    } else {
-        Err(AppError::FailedInsertion)
+    let inserted_id = new_artifact.id.clone();
+    let url = match new_artifact.get_extension() {
+        ArtifactExtensions::Ipa => create_itms_service_url(inserted_id.clone()),
+        _ => create_file_url(inserted_id.clone()),
+    };
+    dbg!(3);
+    let qrcode = qrcode_generator::to_svg_to_string(url, QrCodeEcc::Low, 240, None::<&str>)?;
+    let mut encoded_code = String::from("data:image/svg+xml;base64,");
+    encoded_code.push_str(encode_base64(qrcode.as_bytes())?.as_str());
+    repository.update_qrcode(inserted_id, encoded_code).await?;
+    dbg!(4);
+    if let Some(file_content) = file_content {
+        let content_vec = file_content.to_vec();
+        write_file_to_disk(new_artifact.get_path(), content_vec.as_slice())?;
     }
+
+    Ok((StatusCode::CREATED, Json(new_artifact)))
 }
 
 /// List artifacts by project
@@ -183,50 +154,11 @@ pub(crate) async fn create_artifact(
     )
 )]
 pub(crate) async fn list_project_artifacts(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
-
-    let pipeline = vec![
-        doc! {
-            "$match": doc! {
-              "projectId": project_id,
-            },
-        },
-        doc! {
-          "$project": doc! {
-            "_id": 1,
-            "type": 1,
-            "createdAt": 1,
-            "branch": 1,
-            "originalFilename": 1,
-            "identifier": 1,
-            "iosMetadata": 1,
-            "qrcode": 1,
-          },
-        },
-        doc! {
-          "$group": doc! {
-            "_id": "$branch",
-            "artifacts": {
-              "$push": "$$ROOT",
-            },
-          },
-        },
-    ];
-    let options = AggregateOptions::default();
-    let mut cursor = coll.aggregate(pipeline, options).await?;
-
-    let mut rows = Vec::new();
-
-    while cursor.advance().await? {
-        rows.push(cursor.deserialize_current()?);
-    }
-
-    Ok((StatusCode::OK, Json(rows)).into_response())
+    let artifacts = repository.get_by_project(project_id).await?;
+    Ok((StatusCode::OK, Json(artifacts)))
 }
 
 /// Download artifact
@@ -244,17 +176,10 @@ pub(crate) async fn list_project_artifacts(
     )
 )]
 pub(crate) async fn download_artifact(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
     Path(artifact_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
-
-    let options = FindOneOptions::default();
-    let oid = ObjectId::parse_str(artifact_id)?;
-    let filter = doc! { "_id": oid };
-    if let Some(artifact) = coll.find_one(filter, options).await? {
+    if let Some(artifact) = repository.get(artifact_id).await? {
         let path = artifact.get_path();
         let file = tokio::fs::File::open(path).await?;
         let stream = ReaderStream::new(file);
@@ -263,7 +188,7 @@ pub(crate) async fn download_artifact(
             .status(StatusCode::OK)
             .body(boxed(body))?;
 
-        Ok(response.into_response())
+        Ok(response)
     } else {
         Err(AppError::NotFound)
     }
@@ -284,17 +209,10 @@ pub(crate) async fn download_artifact(
     )
 )]
 pub(crate) async fn get_download_headers(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
     Path(artifact_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
-
-    let options = FindOneOptions::default();
-    let oid = ObjectId::parse_str(artifact_id)?;
-    let filter = doc! { "_id": oid };
-    if let Some(artifact) = coll.find_one(filter, options).await? {
+    if let Some(artifact) = repository.get(artifact_id).await? {
         let (original_filename, mime_type, size) = artifact.get_download_data();
         let response = Response::builder()
             .status(StatusCode::OK)
@@ -306,7 +224,7 @@ pub(crate) async fn get_download_headers(
             )
             .body(body::Empty::new())?;
 
-        Ok(response.into_response())
+        Ok(response)
     } else {
         Err(AppError::NotFound)
     }
@@ -327,55 +245,24 @@ pub(crate) async fn get_download_headers(
     )
 )]
 pub(crate) async fn get_ios_plist(
-    State(client): State<Client>,
+    State(repository): State<ArtifactRepository>,
     Path(artifact_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Artifact> = client
-        .database(DB_NAME)
-        .collection::<Artifact>(COLLECTION_NAME);
+    if let Some(artifact) = repository.get_with_project(artifact_id).await? {
+        let (artifact_id, bundle_identifier, bundle_version, app_name) =
+            artifact.get_plist_data()?;
 
-    let options = AggregateOptions::default();
-    let oid = ObjectId::parse_str(artifact_id)?;
-    let pipeline = vec![
-        doc! {
-            "$match": doc! { "_id": oid }
-        },
-        doc! {
-            "$addFields": doc! {
-                "convertedProjectId": doc! { "$toObjectId": "$projectId" }
-            }
-        },
-        doc! {
-            "$lookup": doc! {
-                "from": "projects",
-                "localField": "convertedProjectId",
-                "foreignField": "_id",
-                "as": "project"
-            }
-        },
-        doc! {
-            "$unwind": "$project"
-        },
-        doc! {
-            "$limit": 1,
-        },
-    ];
+        let plist =
+            parse_plist_template(&artifact_id, &bundle_identifier, &bundle_version, &app_name);
 
-    let artifact = coll
-        .aggregate(pipeline, options)
-        .await?
-        .with_type::<Artifact>()
-        .deserialize_current()?;
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/xml")
+            .header("Content-Disposition", "attachment; filename=ios.plist")
+            .body(plist)?;
 
-    let (artifact_id, bundle_identifier, bundle_version, app_name) = artifact.get_plist_data()?;
-
-    let plist = parse_plist_template(&artifact_id, &bundle_identifier, &bundle_version, &app_name);
-
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header("Content-Type", "application/xml")
-        .header("Content-Disposition", "attachment; filename=ios.plist")
-        .body(plist)?;
-
-    Ok(response.into_response())
+        Ok(response)
+    } else {
+        Err(AppError::NotFound)
+    }
 }

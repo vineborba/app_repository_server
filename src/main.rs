@@ -3,9 +3,8 @@ mod database;
 mod error;
 mod handlers;
 mod helpers;
-mod models;
+mod repositories;
 mod schemas;
-mod surrealdb_repo;
 
 use axum::{
     extract::Host,
@@ -19,9 +18,9 @@ use dotenv::dotenv;
 use std::{env, net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use app_router::router;
+use app_router::AppRouter;
+use database::client::DBClient;
 use error::AppError;
-use surrealdb_repo::DBClient;
 
 #[derive(Clone, Copy)]
 struct Ports {
@@ -35,20 +34,19 @@ async fn main() -> Result<(), AppError> {
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
-            env::var("RUST_LOG").unwrap_or_else(|_| {
-                "rust_axum=debug,axum=debug,tower_http=debug,mongodb=debug".into()
-            }),
+            env::var("RUST_LOG")
+                .unwrap_or_else(|_| "rust_axum=debug,axum=debug,tower_http=debug".into()),
         ))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
     let ports = Ports {
         http: env::var("HTTP_PORT")
-            .unwrap_or_else(|_| "3001".to_string())
+            .unwrap_or_else(|_| String::from("3001"))
             .parse()
             .expect("Failed to parse HTTP_PORT"),
         https: env::var("HTTPS_PORT")
-            .unwrap_or_else(|_| "3002".to_string())
+            .unwrap_or_else(|_| String::from("3002"))
             .parse()
             .expect("Failed to parse HTTP_PORT"),
     };
@@ -63,10 +61,10 @@ async fn main() -> Result<(), AppError> {
     )
     .await?;
 
-    let sdb = DBClient::connect().await?;
-    let db = database::connect().await?;
+    let db_client = DBClient::connect().await?;
+    db_client.bootstrap().await?;
 
-    let app = router(db, sdb).await;
+    let app = AppRouter::new(db_client);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], ports.https));
     axum_server::bind_rustls(addr, config)

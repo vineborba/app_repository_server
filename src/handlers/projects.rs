@@ -4,29 +4,15 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use bson::{doc, oid::ObjectId};
 use image::{imageops::FilterType, io::Reader as ImageReader, ImageOutputFormat};
-use mongodb::{
-    options::{
-        FindOneAndUpdateOptions, FindOneOptions, FindOptions, InsertOneOptions, UpdateOptions,
-    },
-    results::UpdateResult,
-    Client, Collection,
-};
 use std::io::Cursor;
 
 use crate::{
     error::AppError,
     helpers::base64::encode_base64,
-    models::{
-        project::{BaseProjectInput, Project},
-        user::Claims,
-    },
-    schemas::project::{BaseProjectInput as BP, Project as P, ProjectRepository},
+    schemas::{project::{BaseProjectInput, Project},user::Claims},
+    repositories::project::ProjectRepository,
 };
-
-const DB_NAME: &str = "appdist";
-const COLLECTION_NAME: &str = "projects";
 
 /// List all projects
 ///
@@ -40,22 +26,10 @@ const COLLECTION_NAME: &str = "projects";
     )
 )]
 pub(crate) async fn get_projects(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
-
-    let options = FindOptions::default();
-    let mut cursor = coll.find(None, options).await?;
-
-    let mut rows: Vec<Project> = Vec::new();
-
-    while cursor.advance().await? {
-        rows.push(cursor.deserialize_current()?);
-    }
-
-    Ok((StatusCode::OK, Json(rows)).into_response())
+    let projects = repository.get_all().await?;
+    Ok((StatusCode::OK, Json(projects)))
 }
 
 /// Get project data
@@ -74,46 +48,14 @@ pub(crate) async fn get_projects(
     )
 )]
 pub(crate) async fn get_project(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
-
-    let options = FindOneOptions::default();
-    let oid = ObjectId::parse_str(project_id)?;
-    let filter = doc! { "_id": oid };
-    match coll.find_one(filter, options).await? {
-        Some(project) => Ok((StatusCode::OK, Json(project)).into_response()),
-        None => Err(AppError::NotFound),
+    if let Some(p) = repository.get(project_id).await? {
+        Ok((StatusCode::OK, Json(p)))
+    } else {
+        Err(AppError::NotFound)
     }
-}
-
-/// Create new project
-///
-/// Tries to create a new project database or fails with 400 if it can't be done.
-#[utoipa::path(
-    post,
-    path = "/projects-2",
-    request_body = BaseProjectInput,
-    tag = "Projects",
-    responses(
-        (status = 201, description = "Project created successfully", body = Project),
-        (status = 400, description = "Bad Request")
-    ),
-    security(
-        ("jwt_auth" = [])
-    ),
-)]
-pub(crate) async fn create_project_second(
-    State(repository): State<ProjectRepository>,
-    claims: Claims,
-    Json(payload): Json<BP>,
-) -> Result<impl IntoResponse, AppError> {
-    let new_project = P::new(payload, claims.user_id);
-    let new_project = repository.create(new_project).await?;
-    Ok((StatusCode::CREATED, Json(new_project)).into_response())
 }
 
 /// Create new project
@@ -130,21 +72,16 @@ pub(crate) async fn create_project_second(
     ),
     security(
         ("jwt_auth" = [])
-    ),
+    ), 
 )]
 pub(crate) async fn create_project(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
     claims: Claims,
     Json(payload): Json<BaseProjectInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
     let new_project = Project::new(payload, claims.user_id);
-    let options = InsertOneOptions::default();
-    coll.insert_one(&new_project, options).await?;
-
-    Ok((StatusCode::CREATED, Json(new_project)).into_response())
+    let new_project = repository.create(new_project).await?;
+    Ok((StatusCode::CREATED, Json(new_project)))
 }
 
 /// Update project
@@ -165,32 +102,12 @@ pub(crate) async fn create_project(
     )
 )]
 pub(crate) async fn update_project(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
     Path(project_id): Path<String>,
     Json(payload): Json<BaseProjectInput>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
-
-    let oid = ObjectId::parse_str(project_id)?;
-    let filter = doc! { "_id": oid };
-
-    let updated_platforms = bson::to_bson(&payload.platforms).unwrap();
-    let update = doc! {
-        "$set": doc! {
-            "name": payload.name,
-            "description": payload.description,
-            "platforms": updated_platforms
-        }
-    };
-
-    let options = FindOneAndUpdateOptions::default();
-
-    match coll.find_one_and_update(filter, update, options).await? {
-        Some(_) => Ok(StatusCode::NO_CONTENT.into_response()),
-        None => Err(AppError::NotFound),
-    }
+    repository.update(project_id, payload).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Update project image
@@ -211,7 +128,7 @@ pub(crate) async fn update_project(
     )
 )]
 pub(crate) async fn update_project_image(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
     Path(project_id): Path<String>,
     mut payload: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
@@ -234,22 +151,9 @@ pub(crate) async fn update_project_image(
         };
     }
 
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
+    repository.update_image(project_id, Some(encoded_image)).await?;
 
-    let oid = ObjectId::parse_str(project_id)?;
-    let filter = doc! { "_id": oid };
-    let update = doc! { "$set": doc! { "image": encoded_image } };
-    let options = UpdateOptions::default();
-
-    match coll.update_one(filter, update, options).await {
-        Ok(UpdateResult {
-            modified_count: 1, ..
-        }) => Ok(StatusCode::NO_CONTENT.into_response()),
-        Ok(_) => Err(AppError::NotFound),
-        Err(e) => Err(AppError::MongoError(e)),
-    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Remove project image
@@ -268,23 +172,9 @@ pub(crate) async fn update_project_image(
     )
 )]
 pub(crate) async fn remove_project_image(
-    State(client): State<Client>,
+    State(repository): State<ProjectRepository>,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let coll: Collection<Project> = client
-        .database(DB_NAME)
-        .collection::<Project>(COLLECTION_NAME);
-
-    let oid = ObjectId::parse_str(project_id)?;
-    let filter = doc! { "_id": oid };
-    let update = doc! { "$set": doc! { "image": "" } };
-    let options = UpdateOptions::default();
-
-    match coll.update_one(filter, update, options).await {
-        Ok(UpdateResult {
-            modified_count: 1, ..
-        }) => Ok(StatusCode::NO_CONTENT.into_response()),
-        Ok(_) => Err(AppError::NotFound),
-        Err(e) => Err(AppError::MongoError(e)),
-    }
+    repository.update_image(project_id, None).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

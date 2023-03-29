@@ -6,8 +6,6 @@ pub enum AppError {
     SurrealError(#[from] surrealdb::Error),
     #[error("Surreal failed to complete operation {}", .0)]
     SurrealInternalError(#[from] surrealdb::err::Error),
-    #[error("Mongo failed to complete operation {}", .0)]
-    MongoError(#[from] mongodb::error::Error),
     #[error("Failed to decode form-data field")]
     MultipartError(#[from] axum::extract::multipart::MultipartError),
     #[error("Image error")]
@@ -16,8 +14,6 @@ pub enum AppError {
     QrCodeError(#[from] qrcode_generator::QRCodeError),
     #[error("Invalid iOS metadata")]
     InvalidIosMetadata,
-    #[error("Failed to insert data")]
-    FailedInsertion,
     #[error("File missing")]
     FileMissing,
     #[error("Not found")]
@@ -34,8 +30,6 @@ pub enum AppError {
     SystemTimeError(#[from] std::time::SystemTimeError),
     #[error("IO Error")]
     IOError(#[from] std::io::Error),
-    #[error("Invalid ObjectId")]
-    ObjectIdParsingError(#[from] mongodb::bson::oid::Error),
     #[error("Unknown error")]
     AxumError(#[from] axum::http::Error),
     #[error("Unknown error")]
@@ -44,8 +38,6 @@ pub enum AppError {
     Decode(#[from] data_encoding::DecodeError),
     #[error("Unknown error")]
     Encode(#[from] jsonwebtoken::errors::Error),
-    #[error("Mismatched type value: '{0}'")]
-    TypeError(&'static str),
     #[error("Unknown error")]
     Never, // kinda like Typescript never type
 }

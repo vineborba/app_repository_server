@@ -1,10 +1,6 @@
-use bson::serde_helpers::{
-    deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id,
-};
 use chrono::{Duration, Utc};
 use data_encoding::HEXUPPER;
 use jsonwebtoken::{encode, EncodingKey, Header};
-use mongodb::bson::oid::ObjectId;
 use ring::rand::SecureRandom;
 use ring::{digest, pbkdf2, rand};
 use serde::{Deserialize, Serialize};
@@ -14,6 +10,8 @@ use std::ops::Add;
 use utoipa::ToSchema;
 
 use crate::error::AppError;
+use crate::helpers::uuid::generate_uuid;
+// use crate::helpers::uuid::generate_uuid;
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateUserInput {
@@ -62,6 +60,7 @@ impl AuthOutput {
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum UserRole {
     User,
     Manager,
@@ -71,11 +70,7 @@ pub enum UserRole {
 #[derive(Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct User {
-    #[serde(
-        rename = "_id",
-        serialize_with = "serialize_hex_string_as_object_id",
-        deserialize_with = "deserialize_hex_string_from_object_id"
-    )]
+    // pub id: Option<String>,
     pub id: String,
     pub name: String,
     pub email: String,
@@ -89,7 +84,9 @@ impl User {
     pub fn new(new_user: CreateUserInput) -> Result<User, AppError> {
         let (password, salt) = User::encrypt_password(new_user.password)?;
         Ok(User {
-            id: ObjectId::new().to_string(),
+            // TODO: fix this
+            id: generate_uuid(true),
+            // id: None,
             name: new_user.name,
             email: new_user.email,
             role: UserRole::User,

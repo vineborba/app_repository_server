@@ -1,14 +1,13 @@
 use core::fmt;
 use std::time::{SystemTime, SystemTimeError};
 
-use bson::serde_helpers::{
-    deserialize_hex_string_from_object_id, serialize_hex_string_as_object_id, serialize_u64_as_i64,
-};
-use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{error::AppError, helpers::artifact::create_file_path};
+use crate::{
+    error::AppError,
+    helpers::{artifact::create_file_path, uuid::generate_uuid},
+};
 
 use super::project::Project;
 
@@ -36,22 +35,16 @@ pub struct IosMetadata {
 #[derive(Serialize, Deserialize, ToSchema, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {
-    #[serde(
-        rename = "_id",
-        serialize_with = "serialize_hex_string_as_object_id",
-        deserialize_with = "deserialize_hex_string_from_object_id"
-    )]
-    id: String,
+    pub id: String,
+    // pub id: Option<String>,
     original_filename: String,
     branch: String,
     extension: ArtifactExtensions,
     path: String,
-    project_id: String,
     project: Option<Project>,
     mime_type: String,
     size: usize,
     identifier: String,
-    #[serde(serialize_with = "serialize_u64_as_i64")]
     created_at: u64,
     qrcode: Option<String>,
     ios_metadata: Option<IosMetadata>,
@@ -62,14 +55,15 @@ impl Artifact {
         let duration = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
 
         Ok(Artifact {
-            id: ObjectId::new().to_string(),
+            // TODO: fix this
+            id: generate_uuid(true),
+            // id: None,
             branch: data.branch,
             extension: data.extension,
             identifier: data.identifier,
             mime_type: data.mime_type,
             original_filename: data.original_filename,
             path: data.path,
-            project_id: data.project_id,
             size: data.size,
             ios_metadata: data.ios_metdata,
             created_at: duration.as_secs() * 1000,
@@ -132,14 +126,13 @@ pub struct ArtifactToCreate {
     original_filename: String,
     mime_type: String,
     size: usize,
-    project_id: String,
     branch: String,
     identifier: String,
     ios_metdata: Option<IosMetadata>,
 }
 
 impl ArtifactToCreate {
-    pub fn new(data: CreateArtifact, project_id: String) -> Result<ArtifactToCreate, AppError> {
+    pub fn new(data: CreateArtifact, project_id: &String) -> Result<ArtifactToCreate, AppError> {
         let branch = data.branch.unwrap_or_else(|| "develop".to_string());
         let identifier = data
             .identifier
@@ -162,7 +155,6 @@ impl ArtifactToCreate {
                 extension,
                 identifier,
                 path,
-                project_id,
                 ios_metdata: data.metadata,
             })
         } else {
